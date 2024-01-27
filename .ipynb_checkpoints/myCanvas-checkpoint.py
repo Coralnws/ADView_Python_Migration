@@ -25,7 +25,7 @@ class rtCanvas(MyCanvas):  # Canvas for Reference Tree
     x = 30
     y = 30
     
-    def __init__(self,tree,width=300, height=2080):
+    def __init__(self,tree,width=800, height=2080):
         super().__init__(width = width, height = height)
         self.tree = tree
         self.draw_rt(node = self.tree.seed_node)
@@ -35,10 +35,9 @@ class rtCanvas(MyCanvas):  # Canvas for Reference Tree
             self.fill_style = RT_NODE_COLOR
             self.fill_rect(node.x - 5, node.y - 5, 5, 5)
 
-
         self.fill_style = 'black'
-        self.font = INTERNAL_FONT
-        self.fill_text(node.label, node.x + 5, node.y + 5)
+        self.font = '13px Times New Romans'
+        self.fill_text(node.name, node.x + 5, node.y + 5)
 
     def draw_rt(self,node=None,level=0):
         if node is None:
@@ -48,7 +47,7 @@ class rtCanvas(MyCanvas):  # Canvas for Reference Tree
             self.draw_rt(child, level + 1)
 
         self.fill_style = 'black'
-        self.font = LEAF_FONT
+        self.font = '16px Times New Roman'
         if node.is_leaf():
             node.x = self.x * level + X_INTERVAL
             node.y = self.y
@@ -56,29 +55,30 @@ class rtCanvas(MyCanvas):  # Canvas for Reference Tree
             self.move_to(node.x - 10, node.y - 5)
             self.line_to(node.x - 5, node.y - 5)
             self.stroke()
-            self.fill_text(node.taxon.label, node.x,node.y)
+            self.fill_text(node.name, node.x,node.y)
             self.y += Y_INTERVAL
         else:
             node.x = self.x * level + X_INTERVAL
-            child_nodes = node.child_nodes()
-            first_child = child_nodes[0] if child_nodes else None
-            last_child = child_nodes[-1] if child_nodes else None
+            child_count = len(node.children)
+            child_one = node.children[0]
+            child_last = node.children[child_count-1]
             self.begin_path()
-            self.move_to(first_child.x - 10, first_child.y - 5)
-            self.line_to(first_child.x - 10, last_child.y - 5)
+            self.move_to(child_one.x - 10, child_one.y - 5)
+            self.line_to(child_one.x - 10, child_last.y - 5)
             self.stroke()
 
-            tmp = first_child.y + last_child.y
+            tmp = child_one.y + child_last.y
             
             node.y = tmp/2
 
             self.begin_path()
-            self.move_to(node.x - 10 , node.y - 5)
+            self.move_to(node.x -10 , node.y - 5)
             self.line_to(self.x * (level + 1), node.y - 5)
             self.stroke()
-
+            
+            
             self.fill_style = 'blue'
-            self.fill_text(node.label, node.x - 5, node.y - 8)
+            self.fill_text(node.support, node.x - 5, node.y - 8)
             self.fill_style = 'black'
 
 class tcCanvas(MyCanvas): # Canvas for Tree Collection
