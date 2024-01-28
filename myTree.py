@@ -7,15 +7,21 @@ importlib.reload(myCanvas)
 class myTree:
     rt = None  # Reference Tree
     tc = None  # Treelist
+    rt_canvas = None
+    rt_view_support = False
+
     def __init__(self,treefile = None,type="newick"):
         self.read_rt(treefile = treefile, type = type)
 
     def read_rt(self,treefile,type):
         self.rt = dendropy.Tree.get(path=treefile, schema=type)
 
-    def reference_tree(self):
+    def reference_tree(self,view_support=False):
         height = get_leaf_node_amount(self.rt) * Y_INTERVAL + Y_INTERVAL
-        self.rt_canvas = myCanvas.rtCanvas(self.rt,width = 900,height = height)
+
+        if not self.rt_canvas or self.rt_canvas.view_support != view_support:
+            self.rt_canvas = myCanvas.rtCanvas(self.rt,width = CANVAS_MAX_WIDTH,height = height,view_support = view_support)
+
         return self.rt_canvas
 
     def set_outgroup(self,outgroup_taxon):
