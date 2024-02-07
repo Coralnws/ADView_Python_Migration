@@ -6,9 +6,9 @@ importlib.reload(myCanvas)
 
 class myTree:
     rt = None  # Reference Tree
-    tc = None  # Treelist
-    rt_canvas = None
-    rt_view_support = False
+    tc = None  # Tree Collection
+    rt_canvas = None # Reference Tree Canvas
+    rt_view_support = False # Whether to show internal node's support value
 
     def __init__(self,treefile = None,type="newick"):
         self.read_rt(treefile = treefile, type = type)
@@ -17,6 +17,7 @@ class myTree:
         self.rt = dendropy.Tree.get(path=treefile, schema=type)
 
     def reference_tree(self,view_support=False):
+        # Calculate height of canvas
         height = get_leaf_node_amount(self.rt) * Y_INTERVAL + Y_INTERVAL
 
         if not self.rt_canvas or self.rt_canvas.view_support != view_support:
@@ -41,6 +42,8 @@ def get_node_list(tree):
 
 def get_leaf_node_amount(tree):
     return sum(1 for node in tree.leaf_node_iter())
+
+'''   Test Code  '''
 
 '''
 mytree = myTree(treefile = "Data/69species/astral.FAA.trim50genes.final.tre")
