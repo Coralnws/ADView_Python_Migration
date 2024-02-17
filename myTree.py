@@ -33,6 +33,51 @@ class myTree:
     def add_tree_collection(self,treefile=None,type="newick"):
         self.tc = dendropy.TreeList.get_from_path(treefile, schema=type)
 
+    # Same effect as click on the common ancestor of these nodes
+    def select_subtree(self,nodes=None):
+        nodes_list = []
+        subtree_root = None
+
+        # Approximate taxon name
+        for node in nodes:
+            for leaf_node in self.rt.leaf_node_iter():
+                if node.lower() in leaf_node.taxon.label.lower():
+                    nodes_list.append(leaf_node.taxon.label)
+
+        subtree_root = self.rt.mrca(taxon_labels=nodes_list)
+
+        self.rt_canvas.draw_subtree_block(subtree_root)
+
+    # Same effect as click on the leaf_node
+    def select_leaf_node(self, node=None):
+        # Approximate taxon name
+        for leaf_node in self.rt.leaf_node_iter():
+            if node.lower() in leaf_node.taxon.label.lower():
+                self.rt_canvas.draw_subtree_block(leaf_node)
+
+        # Exact taxon name
+        # node = self.rt.find_node_with_taxon_label(node)
+        # self.rt_canvas.draw_subtree_block(node)
+
+class Subtree:
+    rt = None  # Belong to which reference tree
+    label = None  # A,B,C,D,E
+    rtCanvas_index = None
+    root = None # Subtree root
+    color = None
+
+    def __init__(self,label,rt,root,color):
+        self.label = label
+        self.rt = rt
+        self.root = root
+        self.color = color
+        self.block_size = root.block.get_size()
+
+    def set_rtLayer(self,rtCanvas_index):
+        self.rtCanvas_index = rtCanvas_index
+
+
+
 
 def print_tree(tree):
     print(tree.as_ascii_plot())
