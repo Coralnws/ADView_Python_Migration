@@ -9,6 +9,25 @@ class MyCanvas(MultiCanvas):
     def __init__(self,layer,width, height):
         super().__init__(layer,width = width, height = height)
 
+    def draw_dots(self,x,y,layer_index = -1):
+        self[layer_index].fill_style = RED
+        self[layer_index].fill_circle(x, y, 1)
+        self[layer_index].fill_style = BLACK
+
+    def draw_line(self,x1,x2,y1,y2,layer_index = -1):
+        self[layer_index].fill_style = RED
+        self[layer_index].begin_path()
+        self[layer_index].move_to(x1, y1)
+        self[layer_index].line_to(x2,y2)
+        self[layer_index].stroke()
+
+        self[layer_index].fill_style = BLACK
+
+    # Draw rectangle on specific layer
+    def draw_rec(self,x,y,width,height,color,layer_index = -1):
+        self[layer_index].fill_style = color
+        self[layer_index].fill_rect(x, y, width,height)
+
 # Canvas for Reference Tree
 class rtCanvas(MyCanvas):
     # Initial x,y coordinates
@@ -64,6 +83,7 @@ class rtCanvas(MyCanvas):
             node.pos = Point(x,self.y)  # Node position
 
             self.y += Y_INTERVAL
+            node.level = level
 
             # Mouse click range of current leaf node
             range_topL = Point(node.pos.x, node.pos.y - NODE_BLOCK_HEIGHT)
@@ -167,11 +187,6 @@ class rtCanvas(MyCanvas):
 
         self.draw_subtree_block(node_selected)
 
-    # Draw rectangle on specific layer
-    def draw_rec(self,x,y,width,height,color,layer_index = -1):
-        self[layer_index].fill_style = color
-        self[layer_index].fill_rect(x, y, width,height)
-
     def draw_subtree_block(self,node_selected):
         # Calculate block position and size
         if node_selected.is_leaf():
@@ -207,6 +222,13 @@ class rtCanvas(MyCanvas):
             layer_index = self.get_layer_index(new_subtree)
             self[layer_index].clear()
             self.draw_rec(rec_x,rec_y,rec_width,rec_height,color,layer_index = layer_index)
+            node_amt =  len(node_selected.leaf_nodes())                                
+            label_str = f"{label} : {node_amt}"
+            label_x = self.tree_width - (len(label_str) * 7)
+            label_y = rec_y + 12
+
+            self[layer_index].fill_style = BLACK
+            self[layer_index].fill_text(label_str, label_x, label_y)
 
             # Mark the layer as occupied and record corresponding subtree's label
             self.layer_occupied[layer_index] = 1
@@ -283,21 +305,6 @@ class rtCanvas(MyCanvas):
                 canvas_tmp.draw_image(self[i+1], 0, 0)
             self[i].clear()
             self[i].draw_image(canvas_tmp, 0, 0)
-
-    def draw_dots(self,x,y,layer_index = -1):
-        self[layer_index].fill_style = RED
-        self[layer_index].fill_circle(x, y, 1)
-        self[layer_index].fill_style = BLACK
-
-    def draw_line(self,x1,x2,y1,y2,layer_index = -1):
-        self[layer_index].fill_style = RED
-        self[layer_index].begin_path()
-        self[layer_index].move_to(x1, y1)
-        self[layer_index].line_to(x2,y2)
-        self[layer_index].stroke()
-
-        self[layer_index].fill_style = BLACK
-
 
 # Canvas for Tree Collection
 class tcCanvas(MyCanvas):

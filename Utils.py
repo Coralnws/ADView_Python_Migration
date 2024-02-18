@@ -22,6 +22,11 @@ BEIGE = '#F8DAAB'
 BLACK = '#000000'
 ORANGE = '#E8A553'
 
+# AD view
+INDIVIDUAL = "Individual"
+CLUSTER = "Cluster"
+
+
 # Subtree label
 A = 1
 B = 2

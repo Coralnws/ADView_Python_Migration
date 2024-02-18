@@ -7,8 +7,11 @@ importlib.reload(myCanvas)
 class myTree:
     rt = None  # Reference Tree
     tc = None  # Tree Collection
-    rt_canvas = None # Reference Tree Canvas
+    rt_canvas = None # Reference Tree's Canvas
+    ad_individual_canvas = None # Individual ADs' Canvas
+    ad_cluster_canvas = None # Cluster ADs' Canvas
     rt_view_support = False # Whether to show internal node's support value
+    ad_parameters = {}   # { 'parameter_name' : value }
 
     def __init__(self,treefile = None,type="newick"):
         self.read_rt(treefile = treefile, type = type)
@@ -37,11 +40,15 @@ class myTree:
     def select_subtree(self,nodes=None):
         nodes_list = []
         subtree_root = None
-
+   
         # Approximate taxon name
         for node in nodes:
             for leaf_node in self.rt.leaf_node_iter():
                 if node.lower() in leaf_node.taxon.label.lower():
+                    if len(nodes) < 2:
+                        self.rt_canvas.draw_subtree_block(leaf_node.parent_node)
+                        return
+
                     nodes_list.append(leaf_node.taxon.label)
 
         subtree_root = self.rt.mrca(taxon_labels=nodes_list)
@@ -58,6 +65,22 @@ class myTree:
         # Exact taxon name
         # node = self.rt.find_node_with_taxon_label(node)
         # self.rt_canvas.draw_subtree_block(node)
+
+    # Show AD, default: show individual AD
+    def AD(self,view=INDIVIDUAL,):  # view = "Individual" / "Cluster"
+        # Parameter: width,height,context levels, show labels, show colors
+        if view == INDIVIDUAL:
+            if not self.ad_individual_canvas or self.parameter_modified():
+                pass
+
+
+        # Parameter: differentiate inexact match, differentiate sister-group relationships
+        elif view == CLUSTER:
+            if not self.ad_cluster_canvas or self.parameter_modified():
+                pass
+
+
+
 
 class Subtree:
     rt = None  # Belong to which reference tree
