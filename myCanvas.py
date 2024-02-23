@@ -197,6 +197,8 @@ class rtCanvas(MyCanvas):
         rec_y = node_selected.block.topL.y
         rec_width = self.tree_width - rec_x
         rec_height = node_selected.block.botR.y - rec_y
+        
+        new_block = self.check_overlap(Block(Point(rec_x,rec_y),Point(rec_x + rec_width,rec_y + rec_height)))
 
         # If the node was not selected → draw block and set node as selected_subtree
         if not hasattr(node_selected, 'selected') or node_selected.selected == False:
@@ -215,16 +217,20 @@ class rtCanvas(MyCanvas):
             label = self.subtree_label[subtree_label_index]
 
             # Create new subtree (class from myTree.py)
-            new_subtree = Tree.Subtree(label = label, rt = self, root = node_selected, color = color)
+            new_subtree = Tree.Subtree(label = label, rt = self, root = node_selected, color = color, block = new_block)
             self.subtree_list.append(new_subtree)
 
             # Get the available layer_index and draw block on the canvas
             layer_index = self.get_layer_index(new_subtree)
             self[layer_index].clear()
-            self.draw_rec(rec_x,rec_y,rec_width,rec_height,color,layer_index = layer_index)
-            node_amt =  len(node_selected.leaf_nodes())                                
+
+            self.draw_rec(new_block.topL.x,new_block.topL.y,new_block.width,new_block.height,color,layer_index = layer_index)
+            # self.tree_width = ori_tree_width
+
+            node_amt =  len(node_selected.leaf_nodes())
             label_str = f"{label} : {node_amt}"
-            label_x = self.tree_width - (len(label_str) * 7)
+            new_subtree.label_width = (len(label_str) * 7)
+            label_x = new_subtree.block.topL.x + new_subtree.block.width - new_subtree.label_width
             label_y = rec_y + 12
 
             self[layer_index].fill_style = BLACK
@@ -267,6 +273,17 @@ class rtCanvas(MyCanvas):
             # Remove subtree from node and mark node as not-selected
             node_selected.subtree = None
             node_selected.selected = False
+
+    def check_overlap(self,new_block):
+        for tree in self.subtree_list:
+            if new_block.topL.y == tree.block.topL.y:
+                if new_block.height <= tree.block.height:
+                    new_block.width -= tree.label_width + 8
+                else:
+                    new_block.width += tree.label_width + 10
+                    # self.tree_width += tree.label_width + 10
+
+        return new_block
 
     # Sort multicanvas layer and return available layer's index
     # Layer of larger subtree should below the smaller subtree
@@ -313,6 +330,16 @@ class tcCanvas(MyCanvas):
         super().__init__(width = width, height = height)
         self.tree = tree
         self.id = tree.id
+
+
+'''
+Full canvas width = 1100
+Full canvas height depends on ADs amount
+x-gap/y-gap between AD = 20
+'''
+
+
+
 
 
 

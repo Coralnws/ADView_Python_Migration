@@ -43,8 +43,10 @@ class Block():
     def __init__(self,topL,botR):
         self.topL = topL
         self.botR = botR
+        self.width = botR.x - topL.x
+        self.height = botR.y - topL.y
 
-    def check_inRange(self,point):
+    def check_in_range(self,point):
         return point.x >= self.topL.x and point.x <= self.botR.x and point.y >= self.topL.y and point.y <= self.botR.y
 
     def print_block(self):

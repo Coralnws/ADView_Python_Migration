@@ -1,5 +1,6 @@
 import dendropy
 from Utils import *
+import os
 import myCanvas as myCanvas
 import importlib
 importlib.reload(myCanvas)
@@ -18,6 +19,8 @@ class myTree:
 
     def read_rt(self,treefile,type):
         self.rt = dendropy.Tree.get(path=treefile, schema=type)
+        rt_label = os.path.basename(treefile)
+        self.rt.label = rt_label
 
     def reference_tree(self,view_support=False):
         # Calculate height of canvas
@@ -33,14 +36,21 @@ class myTree:
         mrca = self.rt.mrca(taxon_labels=outgroup_taxon)
         self.rt.reroot_at_edge(mrca.edge, update_bipartitions=False)
 
-    def add_tree_collection(self,treefile=None,type="newick"):
+    def add_tree_collection(self,treefile=None,type="newick",namefile=None):
         self.tc = dendropy.TreeList.get_from_path(treefile, schema=type)
+
+        # Read tree collection names
+        if namefile:
+            file = open(namefile, "r")
+            for tree in self.tc:
+                tree_name = file.readline().strip()
+                tree.label = tree_name
 
     # Same effect as click on the common ancestor of these nodes
     def select_subtree(self,nodes=None):
         nodes_list = []
         subtree_root = None
-   
+
         # Approximate taxon name
         for node in nodes:
             for leaf_node in self.rt.leaf_node_iter():
@@ -79,6 +89,13 @@ class myTree:
             if not self.ad_cluster_canvas or self.parameter_modified():
                 pass
 
+    def get_tc(self):
+        return self.tc
+
+    def corresponding_branches(self):
+        if self.tc == None:
+            print("Tree Collection Not Exist")
+            return
 
 
 
@@ -88,13 +105,16 @@ class Subtree:
     rtCanvas_index = None
     root = None # Subtree root
     color = None
+    block = None
+    label_width = None
 
-    def __init__(self,label,rt,root,color):
+    def __init__(self,label,rt,root,color,block):
         self.label = label
         self.rt = rt
         self.root = root
         self.color = color
         self.block_size = root.block.get_size()
+        self.block = block
 
     def set_rtLayer(self,rtCanvas_index):
         self.rtCanvas_index = rtCanvas_index
@@ -115,10 +135,79 @@ def get_leaf_node_amount(tree):
 
 '''
 mytree = myTree(treefile = "Data/69species/astral.FAA.trim50genes.final.tre")
-mytree.add_tree_collection(treefile = "Data/69species/tc.tre")
-for tree in mytree.tc:
-    print(tree)
+mytree.add_tree_collection(treefile = "Data/69species/tc.tre",namefile="Data/69species/names.txt")
+tree = mytree.rt
+
+# for edge in tree.postorder_edge_iter():
+#     print(edge)
+# get_adjacent_edges()
+# te = [i for i in self.tail_node.incident_edges() if i is not self]
+edges = mytree.rt.edges()
+for edge in edges:
+    tail_node = edge.tail_node
+    head_node = edge.head_node
+    if edge.is_internal():
+        print("====Internal branch====")
+        if tail_node and tail_node.is_leaf():
+            print("Tail Node (Leaf):", tail_node.taxon.label)
+        elif tail_node:
+            print("Tail Node (Internal):", tail_node.label)
+        if head_node and head_node.is_leaf():
+            print("Head Node (Leaf):", head_node.taxon.label)
+        elif head_node:
+            print("Head Node (Internal):", head_node.label)
+
+
+        # neighbor_edges = head_node.incident_edges()
+        # print("   ---Neighbout edges---")
+        # # 遍历相邻边并找到连接到叶节点的分支
+        # for neighbor_edge in neighbor_edges:
+        #     if head_node is not neighbor_edge.tail_node:
+        #         continue
+        #     edge_tail_node = neighbor_edge.tail_node
+        #     edge_head_node = neighbor_edge.head_node
+        #     if neighbor_edge.is_internal():
+        #         print("is internal")
+        #         if edge_tail_node and edge_tail_node.is_leaf():
+        #             print("Tail Node (Leaf):", edge_tail_node.taxon.label)
+        #         elif edge_tail_node:
+        #             print("Tail Node (Internal):", edge_tail_node.label)
+        #         if edge_head_node and edge_head_node.is_leaf():
+        #             print("Head Node (Leaf):", edge_head_node.taxon.label)
+        #         elif edge_head_node:
+        #             print("Head Node (Internal):", edge_head_node.label)
+        #     else:
+        #         print("is leaf")
+        #         if edge_tail_node.is_leaf():
+        #             print("Tail Node (Leaf):", edge_tail_node.taxon.label)
+        #         else:
+        #             print("Tail Node (Internal):", edge_tail_node.label)
+        #         if edge_head_node.is_leaf():
+        #             print("Head Node (Leaf):", edge_head_node.taxon.label)
+        #         else:
+        #             print("Head Node (Internal):", edge_head_node.label)
+
+    else:
+        print("====Leaf====")
+        if tail_node.is_leaf():
+            print("Tail Node (Leaf):", tail_node.taxon.label)
+        else:
+            print("Tail Node (Internal):", tail_node.label)
+        if head_node.is_leaf():
+            print("Head Node (Leaf):", head_node.taxon.label)
+        else:
+            print("Head Node (Internal):", head_node.label)
+
 '''
+
+
+# for tree in mytree.tc:
+#     taxa_names2 = set(taxon.label for taxon in tree.taxon_namespace)
+#     print(taxa_names2)
+#     missing_taxa = taxa_names1 - taxa_names2
+#     print(len(missing_taxa))
+
+
 
 """
 def filter_node_selected(node, x, y):
