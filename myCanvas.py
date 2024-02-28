@@ -72,7 +72,6 @@ class rtCanvas(MyCanvas):
         self[-1].fill_style = BLACK
         self[-1].font = LEAF_FONT
 
-
         if node.is_leaf():
             # Calculate node's x,y coordinates
             if self.view_support:
@@ -187,6 +186,7 @@ class rtCanvas(MyCanvas):
 
         self.draw_subtree_block(node_selected)
 
+
     def draw_subtree_block(self,node_selected):
         # Calculate block position and size
         if node_selected.is_leaf():
@@ -197,7 +197,7 @@ class rtCanvas(MyCanvas):
         rec_y = node_selected.block.topL.y
         rec_width = self.tree_width - rec_x
         rec_height = node_selected.block.botR.y - rec_y
-        
+
         new_block = self.check_overlap(Block(Point(rec_x,rec_y),Point(rec_x + rec_width,rec_y + rec_height)))
 
         # If the node was not selected → draw block and set node as selected_subtree

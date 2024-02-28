@@ -7,20 +7,30 @@ importlib.reload(myCanvas)
 
 class myTree:
     rt = None  # Reference Tree
-    tc = None  # Tree Collection
+    tc = []  # Tree Collection
+    rt_taxa = []
+    tc_taxa = []
     rt_canvas = None # Reference Tree's Canvas
     ad_individual_canvas = None # Individual ADs' Canvas
     ad_cluster_canvas = None # Cluster ADs' Canvas
     rt_view_support = False # Whether to show internal node's support value
     ad_parameters = {}   # { 'parameter_name' : value }
+    outgroup = []
+
 
     def __init__(self,treefile = None,type="newick"):
         self.read_rt(treefile = treefile, type = type)
 
+
     def read_rt(self,treefile,type):
         self.rt = dendropy.Tree.get(path=treefile, schema=type)
+
+        # Filename as tree name
         rt_label = os.path.basename(treefile)
         self.rt.label = rt_label
+
+        # Get tree's taxa/leaf node
+        self.rt.taxa_list = [leaf.taxon.label for leaf in self.rt.leaf_nodes()]
 
     def reference_tree(self,view_support=False):
         # Calculate height of canvas
@@ -34,17 +44,69 @@ class myTree:
     def set_outgroup(self,outgroup_taxon):
         # ["Uronema sp", "Monomastix opisthostigma", "Pyramimonas parkeae", "Nephroselmis pyriformis"]
         mrca = self.rt.mrca(taxon_labels=outgroup_taxon)
-        self.rt.reroot_at_edge(mrca.edge, update_bipartitions=False)
+        self.rt.reroot_at_edge(mrca.edge)
+        self.outgroup = outgroup_taxon
+
+        if len(self.tc) > 1:
+            for tree in self.tc:
+                mrca = tree.mrca(taxon_labels=self.outgroup)
+                tree.reroot_at_edge(mrca.edge)
+
+            self.corresponding_branches()
 
     def add_tree_collection(self,treefile=None,type="newick",namefile=None):
         self.tc = dendropy.TreeList.get_from_path(treefile, schema=type)
 
-        # Read tree collection names
+        # Read tree collection name
         if namefile:
             file = open(namefile, "r")
-            for tree in self.tc:
+
+        for index,tree in enumerate(self.tc):
+            # Set trees' index, taxa_list, missing taxa, name and outgroup
+            tree.index = index + 1
+            tree.taxa_list = [leaf.taxon.label for leaf in tree.leaf_nodes()]
+            tree.missing = set(self.rt.taxa_list) - set(tree.taxa_list)
+
+            if namefile:
                 tree_name = file.readline().strip()
-                tree.label = tree_name
+                tree.name = tree_name
+
+            if len(self.outgroup) > 1:
+                mrca = tree.mrca(taxon_labels=self.outgroup)
+                tree.reroot_at_edge(mrca.edge)
+
+        self.corresponding_branches()
+
+    # def add_tree_collection(self,treefile=None,type="newick",namefile=None):
+    #     # Read tree collection file + namefile
+    #     tree_file = open(treefile, "r")
+    #
+    #     if namefile:
+    #         name_file = open(namefile, "r")
+    #
+    #     tree_file_content = tree_file.read()
+    #     tree_strings = tree_file_content.split(";")
+    #
+    #     for tree_string in tree_strings:
+    #         if not tree_string.strip():
+    #             continue
+    #
+    #         # Parsen newick string and create tree
+    #         tree_string += ";"
+    #         tree = dendropy.Tree.get_from_string(tree_string, schema=type)
+    #           # Get taxon namespace and record misisng taxa
+    #         tree.missing = self.rt.taxon_namespace - tree.taxon_namespace
+    #
+    #         # Set tree name
+    #         if namefile:
+    #             tree_name = name_file.readline().strip()
+    #             tree.label = tree_name
+    #
+    #         # Save tree
+    #         self.tc.append(tree)
+    #
+    #     # Calculate corrresponding branch
+
 
     # Same effect as click on the common ancestor of these nodes
     def select_subtree(self,nodes=None):
@@ -83,7 +145,6 @@ class myTree:
             if not self.ad_individual_canvas or self.parameter_modified():
                 pass
 
-
         # Parameter: differentiate inexact match, differentiate sister-group relationships
         elif view == CLUSTER:
             if not self.ad_cluster_canvas or self.parameter_modified():
@@ -97,6 +158,41 @@ class myTree:
             print("Tree Collection Not Exist")
             return
 
+        for node in self.rt.postorder_node_iter():
+            node_taxa = [leaf.taxon.label for leaf in node.leaf_nodes()]
+            node.corr = []
+            node.exact_match = 1
+            node.exact_match_tree = []
+
+            for tree in self.tc:
+                target_set = set(node_taxa) - tree.missing
+                self.rt.missing = tree.missing - set(node_taxa)
+
+                node.corr_similarity = 0
+                node.corr.append(0)
+
+                for tc_node in tree.postorder_node_iter():
+                    similarity = self.get_similarity(target_set=target_set,node=node,tc_node=tc_node)
+                    if similarity > node.corr_similarity:
+                        node.corr[tree.index - 1] = tc_node
+                        node.corr_similarity = similarity
+                        if similarity == 1:
+                            node.exact_match += 1
+                            node.exact_match_tree.append(tree)
+    def get_similarity(self,target_set,node,tc_node):
+        if tc_node.is_leaf():
+            tc_node.card = 0 if tc_node.taxon.label in self.rt.missing else 1
+            tc_node.intersect = 1 if tc_node.taxon.label in target_set else 0
+        else:
+            child_nodes = tc_node.child_nodes()
+            tc_node.card = 0
+            tc_node.intersect = 0
+            for child in child_nodes:
+                tc_node.card += child.card
+                tc_node.intersect += child.intersect
+
+        union = len(target_set) + tc_node.card - tc_node.intersect
+        return tc_node.intersect/union
 
 
 class Subtree:
@@ -120,8 +216,6 @@ class Subtree:
         self.rtCanvas_index = rtCanvas_index
 
 
-
-
 def print_tree(tree):
     print(tree.as_ascii_plot())
 
@@ -133,15 +227,13 @@ def get_leaf_node_amount(tree):
 
 '''   Test Code  '''
 
-'''
-mytree = myTree(treefile = "Data/69species/astral.FAA.trim50genes.final.tre")
-mytree.add_tree_collection(treefile = "Data/69species/tc.tre",namefile="Data/69species/names.txt")
-tree = mytree.rt
+
 
 # for edge in tree.postorder_edge_iter():
 #     print(edge)
 # get_adjacent_edges()
 # te = [i for i in self.tail_node.incident_edges() if i is not self]
+'''
 edges = mytree.rt.edges()
 for edge in edges:
     tail_node = edge.tail_node
@@ -197,8 +289,8 @@ for edge in edges:
             print("Head Node (Leaf):", head_node.taxon.label)
         else:
             print("Head Node (Internal):", head_node.label)
-
 '''
+
 
 
 # for tree in mytree.tc:
