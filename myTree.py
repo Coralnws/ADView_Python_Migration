@@ -37,7 +37,7 @@ class myTree:
         height = get_leaf_node_amount(self.rt) * Y_INTERVAL + Y_INTERVAL
 
         if not self.rt_canvas or self.rt_canvas.view_support != view_support:
-            self.rt_canvas = myCanvas.rtCanvas(self.rt,width = CANVAS_MAX_WIDTH,height = height,view_support = view_support)
+            self.rt_canvas = myCanvas.rtCanvas(self.rt,width = CANVAS_MAX_WIDTH,height = height,view_support = view_support,tc = self.tc)
 
         return self.rt_canvas
 
@@ -161,7 +161,7 @@ class myTree:
         for node in self.rt.postorder_node_iter():
             node_taxa = [leaf.taxon.label for leaf in node.leaf_nodes()]
             node.corr = []
-            node.exact_match = 1
+            node.exact_match = 0
             node.exact_match_tree = []
 
             for tree in self.tc:
@@ -176,7 +176,8 @@ class myTree:
                     if similarity > node.corr_similarity:
                         node.corr[tree.index - 1] = tc_node
                         node.corr_similarity = similarity
-                        if similarity == 1:
+                        # print(similarity)
+                        if similarity == 1.0:
                             node.exact_match += 1
                             node.exact_match_tree.append(tree)
     def get_similarity(self,target_set,node,tc_node):

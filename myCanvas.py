@@ -51,13 +51,19 @@ class rtCanvas(MyCanvas):
     subtree_label = ['A','B','C','D','E']
     subtree_label_used = [1,1,1,1,1]
 
-    def __init__(self,tree,width,height,view_support):
-        super().__init__( 6, width = width, height = height)
+    node_hover = None
+
+    def __init__(self,tree,width,height,view_support,tc):
+        super().__init__( 7, width = width, height = height)
+        # Layer 7 - reference tree
+        # Layer 6 - hover block
         self.tree = tree
+        self.tc = tc
         self.view_support = view_support
         self.tree_width = 1
         self.draw_rt(node = self.tree.seed_node)
         self.on_mouse_down(self.mouse_clicked)
+        self.on_mouse_move(self.mouse_hover)
 
     # Draw reference tree on rtcanvas
     def draw_rt(self,node=None,level=0):
@@ -158,6 +164,11 @@ class rtCanvas(MyCanvas):
             else:
                 node.parent_node.block = Block(node.block.topL,node.block.botR)
 
+        # Testing
+        # self.draw_dots(node.pos.x,node.pos.y - X_INTERVAL)
+        # self.draw_dots(node.pos.x + X_INTERVAL, node.pos.y)
+        # self.draw_dots(node.pos.x + X_INTER0L.y,8,node.range_botR.y - node.range_topL.y,BEIGE)
+
 
     # Drawing leaf node on canvas
     def draw_leaf_node(self,node):
@@ -186,6 +197,50 @@ class rtCanvas(MyCanvas):
 
         self.draw_subtree_block(node_selected)
 
+    def mouse_hover(self, x, y):
+        node_selected = self.tree.find_node(lambda node: self.filter_node_selected(node, x,y))
+
+        if not node_selected or node_selected != self.node_hover:
+            self[-2].clear()
+            self[-2].flush()
+
+        if node_selected and node_selected != self.node_hover:
+            self.node_hover = node_selected
+            self.draw_hover_block()
+            self.draw_node_details(node_selected)
+
+        # self.node_hover = node_selected
+
+
+    def draw_node_details(self,node):
+        # support , length , exact match
+        if node.is_leaf():
+            support = '-'
+        else:
+            support = node.label
+
+        length = node.edge.length if node.edge.length != None else 0
+        exact_match = format(node.exact_match / len(self.tc) * 100, ".2f")
+
+        self[-2].begin_path()
+        self[-2].fill_style = BLACK
+        self[-2].font = LEAF_FONT
+
+        self[-2].fill_text("Support : " + support, self.tree_width + 100 , node.pos.y)
+        self[-2].fill_text("Length :  " + str(length), self.tree_width + 100, node.pos.y + 15)
+        self[-2].fill_text("Exact Match :  " + str(exact_match) + "%", self.tree_width + 100 , node.pos.y + 30)
+
+
+    def draw_hover_block(self):
+        # self.draw_rec(node_hovered.mouse_range.topL.x,node_hovered.mouse_range.topL.y,node_hovered.mouse_range.width,)
+        # if is_leaf : draw node.pos
+        # if is internal : draw mouse range
+        self.draw_rec( self.node_hover.pos.x,  self.node_hover.pos.y - X_INTERVAL, X_INTERVAL - 2, X_INTERVAL - 2,BLACK,layer_index = -2)
+
+        # else:
+        #     self.draw_rec(self.node_hover.mouse_range.topL.x + 2, self.node_hover.mouse_range.topL.y, self.node_hover.mouse_range.width - 2, self.node_hover.mouse_range.height,BLACK,layer_index = -2)
+
+        self[-2].flush()
 
     def draw_subtree_block(self,node_selected):
         # Calculate block position and size
