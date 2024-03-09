@@ -16,6 +16,7 @@ class myTree:
     rt_view_support = False # Whether to show internal node's support value
     ad_parameters = {}   # { 'parameter_name' : value }
     outgroup = []
+    block_label = ""
 
 
     def __init__(self,treefile = None,type="newick"):
@@ -37,7 +38,7 @@ class myTree:
         height = get_leaf_node_amount(self.rt) * Y_INTERVAL + Y_INTERVAL
 
         if not self.rt_canvas or self.rt_canvas.view_support != view_support:
-            self.rt_canvas = myCanvas.rtCanvas(self.rt,width = CANVAS_MAX_WIDTH,height = height,view_support = view_support,tc = self.tc)
+            self.rt_canvas = myCanvas.rtCanvas(self,width = CANVAS_MAX_WIDTH,height = height,view_support = view_support,tc = self.tc)
 
         return self.rt_canvas
 
@@ -195,6 +196,15 @@ class myTree:
         union = len(target_set) + tc_node.card - tc_node.intersect
         return tc_node.intersect/union
 
+    def is_descendant(self,parent_node,child_node):
+        for node in parent_node.child_nodes():
+            if self.is_descendant(node,child_node):
+                return True
+
+        if node == child_node:
+            return True
+
+        return False
 
 class Subtree:
     rt = None  # Belong to which reference tree
@@ -204,6 +214,7 @@ class Subtree:
     color = None
     block = None
     label_width = None
+    leaf_set = set()
 
     def __init__(self,label,rt,root,color,block):
         self.label = label
@@ -212,10 +223,20 @@ class Subtree:
         self.color = color
         self.block_size = root.block.get_size()
         self.block = block
+        self.get_leaf_nodes()
 
     def set_rtLayer(self,rtCanvas_index):
         self.rtCanvas_index = rtCanvas_index
 
+    def get_leaf_nodes(self):
+        for leaf_node in self.root.leaf_nodes():
+            self.leaf_set.add(leaf_node.taxon.label)
+
+class AD:
+    # Construct by dendropy node
+    tree = None  # tree collection
+    def __init__(self,tree):
+        self.tree = tree
 
 def print_tree(tree):
     print(tree.as_ascii_plot())

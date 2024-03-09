@@ -1,6 +1,9 @@
 # CONSTANT
+  # Tree
 LEAF = "Leaf"
 INTERNAL = 'Internal Node'
+
+  # Canvas
 RT_NODE_COLOR = '#F38D76'
 X_INTERVAL = 10
 Y_INTERVAL = 20
@@ -8,9 +11,19 @@ FONT_SIZE = 16
 NODE_BLOCK_HEIGHT = 13
 INTERNAL_FONT = '13px Times New Romans'
 LEAF_FONT = '16px Times New Romans'
-CANVAS_MAX_WIDTH = 1000
+CANVAS_MAX_WIDTH = 1100
+LABEL_MAX_WIDTH = 55
 
-# COLOR
+  # AD
+SUBTREE_ROOT = 0
+IS_DESCENDANT = 1
+INDEPENDENT_LEAF = 2
+NON_DESCENDANT = 3
+
+INDIVIDUAL = "Individual"
+CLUSTER = "Cluster"
+
+  # COLOR
 BLANK = '#FFFFFF'
 # RED = '#F38D76'
 RED = '#BF726D'
@@ -22,12 +35,7 @@ BEIGE = '#F8DAAB'
 BLACK = '#000000'
 ORANGE = '#E8A553'
 
-# AD view
-INDIVIDUAL = "Individual"
-CLUSTER = "Cluster"
-
-
-# Subtree label
+  # Subtree label
 A = 1
 B = 2
 C = 3
@@ -40,11 +48,13 @@ class Point():
         self.y = y
 
 class Block():
+    nested_block = []
+    belong_subtree = None
+
     def __init__(self,topL,botR):
         self.topL = topL
         self.botR = botR
-        self.width = botR.x - topL.x
-        self.height = botR.y - topL.y
+        self.calculate_width_height()
 
     def check_in_range(self,point):
         return point.x >= self.topL.x and point.x <= self.botR.x and point.y >= self.topL.y and point.y <= self.botR.y
@@ -56,3 +66,12 @@ class Block():
     def get_size(self):
         return self.botR.y - self.topL.y
 
+    def calculate_width_height(self):
+        self.width = self.botR.x - self.topL.x
+        self.height = self.botR.y - self.topL.y
+
+    def check_nested_block(self,block):
+        return self.check_in_range(block.topL) and block.botR.y <= self.botR.y
+
+    def set_subtree(self,subtree):
+        self.belong_subtree = subtree
