@@ -1,27 +1,46 @@
 # CONSTANT
   # Tree
-LEAF = "Leaf"
+ROOT = 'Root'
+LEAF = 'Leaf'
 INTERNAL = 'Internal Node'
 
-  # Canvas
+  # RT_Canvas
 RT_NODE_COLOR = '#F38D76'
-X_INTERVAL = 10
-Y_INTERVAL = 20
+RT_X_INTERVAL = 10
+RT_Y_INTERVAL = 20
 FONT_SIZE = 16
 NODE_BLOCK_HEIGHT = 13
 INTERNAL_FONT = '13px Times New Romans'
 LEAF_FONT = '16px Times New Romans'
 CANVAS_MAX_WIDTH = 1100
 LABEL_MAX_WIDTH = 55
+MAX_SUBTREE = 5
 
-  # AD
+  # AD , TC_CANVAS
 SUBTREE_ROOT = 0
 IS_DESCENDANT = 1
 INDEPENDENT_LEAF = 2
 NON_DESCENDANT = 3
 
-INDIVIDUAL = "Individual"
-CLUSTER = "Cluster"
+AD_INDIVIDUAL = "Individual"
+AD_CLUSTER = "Cluster"
+
+INDIVIDUAL_BLOCK = 'Individual ad block'
+SUBTREE_BLOCK = 'Subtree ad block'
+INDIVIDUAL_LEAF_BLOCK = 'Individual leaf block'
+
+
+
+DEFAULT_INDV_BLOCK_WIDTH = 30
+DEFAULT_INDV_BLOCK_HEIGHT = 7
+DEFAULT_AD_PADDING = 20
+DEFAULT_AD_PER_ROW = 7
+DEFAULT_AD_WIDTH = 135  # Default width
+DEFAULT_AD_HEIGHT = 150
+BLOCK_MINIMUM_HEIGHT = [20,20,20,20,15,15]
+
+AD_BRANCH_LENGTH = 5
+
 
   # COLOR
 BLANK = '#FFFFFF'
@@ -34,6 +53,7 @@ GREEN = '#6F9D55'
 BEIGE = '#F8DAAB'
 BLACK = '#000000'
 ORANGE = '#E8A553'
+GREY = '#ABABAB'
 
   # Subtree label
 A = 1
@@ -42,36 +62,6 @@ C = 3
 D = 4
 E = 5
 
-class Point():
-    def __init__(self,x,y):
-        self.x = x
-        self.y = y
 
-class Block():
-    nested_block = []
-    belong_subtree = None
-
-    def __init__(self,topL,botR):
-        self.topL = topL
-        self.botR = botR
-        self.calculate_width_height()
-
-    def check_in_range(self,point):
-        return point.x >= self.topL.x and point.x <= self.botR.x and point.y >= self.topL.y and point.y <= self.botR.y
-
-    def print_block(self):
-        print("topL = (",self.topL.x,",",self.topL.y,")")
-        print("botR = (",self.botR.x,",",self.botR.y,")")
-
-    def get_size(self):
-        return self.botR.y - self.topL.y
-
-    def calculate_width_height(self):
-        self.width = self.botR.x - self.topL.x
-        self.height = self.botR.y - self.topL.y
-
-    def check_nested_block(self,block):
-        return self.check_in_range(block.topL) and block.botR.y <= self.botR.y
-
-    def set_subtree(self,subtree):
-        self.belong_subtree = subtree
+def _private_function():
+    print("hi")

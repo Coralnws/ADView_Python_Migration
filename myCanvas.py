@@ -1,11 +1,13 @@
 import ipycanvas as ipc
 from ipycanvas import Canvas,MultiCanvas
-import myTree as Tree
+import myTree as myTree
 from Utils import *
 
 # Use Multicanvas which has multiple canvas layer
 class MyCanvas(MultiCanvas):
     tree = None
+    line_dashes = [[2, 2], [5, 5], [8, 8], [10, 10]]
+
     def __init__(self,layer,width, height):
         super().__init__(layer,width = width, height = height)
 
@@ -14,19 +16,32 @@ class MyCanvas(MultiCanvas):
         self[layer_index].fill_circle(x, y, 1)
         self[layer_index].fill_style = BLACK
 
-    def draw_line(self,x1,x2,y1,y2,layer_index = -1):
-        self[layer_index].fill_style = RED
+    def draw_solid_line(self,head,tail,color,layer_index = -1):
+        self[layer_index].stroke_style = color
         self[layer_index].begin_path()
-        self[layer_index].move_to(x1, y1)
-        self[layer_index].line_to(x2,y2)
+        self[layer_index].move_to(head.x, head.y)
+        self[layer_index].line_to(tail.x,tail.y)
         self[layer_index].stroke()
 
-        self[layer_index].fill_style = BLACK
+    def draw_dotted_line(self,head,tail,color,line_dash_index=0,layer_index = -1):
+
+        self[layer_index].stroke_style = color
+        self[layer_index].set_line_dash(self.line_dashes[line_dash_index])
+        self[layer_index].begin_path()
+        self[layer_index].move_to(head.x, head.y)
+        self[layer_index].line_to(tail.x,tail.y)
+        self[layer_index].stroke()
+
+        self[layer_index].set_line_dash([])
 
     # Draw rectangle on specific layer
     def draw_rec(self,x,y,width,height,color,layer_index = -1):
         self[layer_index].fill_style = color
         self[layer_index].fill_rect(x, y, width,height)
+
+    def draw_frame(self,x,y,width,height,color,layer_index = -1):
+        self[layer_index].stroke_style = color
+        self[layer_index].stroke_rect(x, y, width, height)
 
 # Canvas for Reference Tree
 class rtCanvas(MyCanvas):
@@ -34,24 +49,10 @@ class rtCanvas(MyCanvas):
     x = 30
     y = 30
 
-    # Show support value
-    view_support = False
-
     # Subtree Block color
     subtree_color_list = [BLUE,ORANGE,GREEN,RED,PURPLE]
-    subtree_color_used = [1,1,1,1,1]
-
-    # Manage Multicanvas
-    layer_occupied = [0,0,0,0,0]
-    layer_block_list = {}
-
-    # Manage Subtree
-    subtree_list = []
 
     subtree_label = ['A','B','C','D','E']
-    subtree_label_used = [1,1,1,1,1]
-
-    node_hover = None
 
     def __init__(self,tree,width,height,view_support,tc):
         super().__init__( 7, width = width, height = height)
@@ -61,9 +62,22 @@ class rtCanvas(MyCanvas):
         self.rt = tree.rt
         self.view_support = view_support
         self.tree_width = 1
-        self.draw_rt(node = self.rt.seed_node)
+
+        # Manage Multicanvas
+        self.layer_occupied = [0, 0, 0, 0, 0]
+        self.layer_block_list = {}
+
+        # Manage Subtree
+        self.subtree_list = []
+        self.subtree_label_used = [1, 1, 1, 1, 1]
+        self.subtree_color_used = [1, 1, 1, 1, 1]
+
+        self.node_hover = None
+
+        self.draw_rt(node=self.rt.seed_node)
         self.on_mouse_down(self.mouse_clicked)
         self.on_mouse_move(self.mouse_hover)
+
 
     # Draw reference tree on rtcanvas
     def draw_rt(self,node=None,level=0):
@@ -83,16 +97,16 @@ class rtCanvas(MyCanvas):
             if self.view_support:
                 x = self.x * level
             else:
-                x = X_INTERVAL * level + X_INTERVAL
+                x = RT_X_INTERVAL * level + RT_X_INTERVAL
 
             node.pos = Point(x,self.y)  # Node position
 
-            self.y += Y_INTERVAL
+            self.y += RT_Y_INTERVAL
             node.level = level
 
             # Mouse click range of current leaf node
             range_topL = Point(node.pos.x, node.pos.y - NODE_BLOCK_HEIGHT)
-            range_botR = Point(range_topL.x + X_INTERVAL + len(str(node.taxon.label)) * 12,
+            range_botR = Point(range_topL.x + RT_X_INTERVAL + len(str(node.taxon.label)) * 12,
                                range_topL.y + NODE_BLOCK_HEIGHT + 3)
             node.mouse_range = Block(range_topL,range_botR)
             node.block = Block(range_topL,range_botR)
@@ -117,14 +131,17 @@ class rtCanvas(MyCanvas):
             if self.view_support:
                 x = self.x * level
             else:
-                x = X_INTERVAL * level + X_INTERVAL
+                x = RT_X_INTERVAL * level + RT_X_INTERVAL
 
             tmp = first_child.pos.y + last_child.pos.y
             node.pos = Point(x, tmp / 2)
 
             # Mouse click range of current internal node
             range_topL = Point(node.pos.x + 3, first_child.pos.y)
-            range_botR = Point(range_topL.x + X_INTERVAL, last_child.pos.y - X_INTERVAL)
+            if self.view_support:
+                range_botR = Point(self.x * (level+1), last_child.pos.y - RT_X_INTERVAL)
+            else:
+                range_botR = Point(range_topL.x + RT_X_INTERVAL, last_child.pos.y - RT_X_INTERVAL)
             node.mouse_range = Block(range_topL, range_botR)
 
             # Draw vertical branch
@@ -139,7 +156,7 @@ class rtCanvas(MyCanvas):
             if self.view_support:
                 self[-1].line_to(self.x * (level+1), node.pos.y - 5)
             else:
-                self[-1].line_to(X_INTERVAL * (level + 1) + X_INTERVAL, node.pos.y - 5)
+                self[-1].line_to(RT_X_INTERVAL * (level + 1) + RT_X_INTERVAL, node.pos.y - 5)
             self[-1].stroke()
 
             if self.view_support:
@@ -174,9 +191,9 @@ class rtCanvas(MyCanvas):
         self[-1].fill_style = BLACK
         self[-1].begin_path()
         self[-1].move_to(node.pos.x, node.pos.y - 5)
-        self[-1].line_to(node.pos.x + X_INTERVAL, node.pos.y - 5)
+        self[-1].line_to(node.pos.x + RT_X_INTERVAL, node.pos.y - 5)
         self[-1].stroke()
-        self[-1].fill_text(node.taxon.label, node.pos.x + X_INTERVAL, node.pos.y)
+        self[-1].fill_text(node.taxon.label, node.pos.x + RT_X_INTERVAL, node.pos.y)
 
     # Filter function
     def filter_node_selected(self,node, x , y):
@@ -231,18 +248,31 @@ class rtCanvas(MyCanvas):
             support = node.label
 
         length = node.edge.length if node.edge.length != None else 0
-        exact_match = format(node.exact_match / len(self.tree.tc) * 100, ".2f")
+
+        if len(self.tree.tc) > 0:
+            exact_match = format(node.exact_match / len(self.tree.tc) * 100, ".2f")
+        else:
+            exact_match = '- '
 
         self[-2].begin_path()
         self[-2].fill_style = BLACK
         self[-2].font = LEAF_FONT
 
-        self[-2].fill_text("Support : " + support, self.tree_width + 100 , node.pos.y)
-        self[-2].fill_text("Length :  " + str(length), self.tree_width + 100, node.pos.y + 15)
-        self[-2].fill_text("Exact Match :  " + str(exact_match) + "%", self.tree_width + 100 , node.pos.y + 30)
+        if self.view_support:
+            label_pos = self.tree_width + 50
+        else:
+            label_pos = self.tree_width + 200
+
+        self[-2].fill_text("Support : " + support, label_pos , node.pos.y)
+        self[-2].fill_text("Length :  " + str(length), label_pos, node.pos.y + 15)
+        self[-2].fill_text("Exact Match :  " + str(exact_match) + "%", label_pos , node.pos.y + 30)
 
     def draw_hover_block(self):
-        self.draw_rec( self.node_hover.pos.x,  self.node_hover.pos.y - X_INTERVAL, X_INTERVAL - 2, X_INTERVAL - 2,BLACK,layer_index = -2)
+        if not self.node_hover.is_leaf() and self.view_support:
+            self.draw_rec(self.node_hover.pos.x + RT_X_INTERVAL , self.node_hover.pos.y - RT_X_INTERVAL + 2 , RT_X_INTERVAL,
+                          RT_X_INTERVAL - 2, BLACK, layer_index=-2)
+        else:
+            self.draw_rec(self.node_hover.pos.x, self.node_hover.pos.y - RT_X_INTERVAL, RT_X_INTERVAL - 2, RT_X_INTERVAL - 2, BLACK, layer_index = -2)
 
         self[-2].flush()
 
@@ -255,7 +285,7 @@ class rtCanvas(MyCanvas):
 
             # Calculate block position and size
             if node_selected.is_leaf():
-                rec_x = node_selected.block.topL.x + X_INTERVAL - 5
+                rec_x = node_selected.block.topL.x + RT_X_INTERVAL - 5
             else:
                 rec_x = node_selected.mouse_range.topL.x + 2
 
@@ -263,9 +293,8 @@ class rtCanvas(MyCanvas):
             rec_width = self.tree_width - rec_x
             rec_height = node_selected.block.botR.y - rec_y
 
-            self.output = "here1"
             new_block = self.adjust_block_size(Block(Point(rec_x, rec_y), Point(rec_x + rec_width, rec_y + rec_height)))
-            self.output = "here2"
+
             # Choose block color
             color_index = self.subtree_color_used.index(1)
             self.subtree_color_used[color_index] = 0
@@ -277,7 +306,7 @@ class rtCanvas(MyCanvas):
             label = self.subtree_label[subtree_label_index]
 
             # Create new subtree (class from myTree.py)
-            new_subtree = Tree.Subtree(label = label, rt = self, root = node_selected, color = color, block = new_block)
+            new_subtree = myTree.Subtree(label = label, rt = self, root = node_selected, color = color, block = new_block)
             self.subtree_list.append(new_subtree)
 
             # Get the available layer_index and draw block on the canvas
@@ -288,14 +317,6 @@ class rtCanvas(MyCanvas):
             # self.tree_width = ori_tree_width
 
             self.write_block_label(new_subtree,layer_index)
-            # node_amt =  len(node_selected.leaf_nodes())
-            # label_str = f"{label} : {node_amt}"
-            # new_subtree.label_width = (len(label_str) * 7)
-            # label_x = new_subtree.block.topL.x + new_subtree.block.width - new_subtree.label_width
-            # label_y = rec_y + 12
-
-            # self[layer_index].fill_style = BLACK
-            # self[layer_index].fill_text(label_str, label_x, label_y)
 
             # Mark the layer as occupied and record corresponding subtree's label
             self.layer_occupied[layer_index] = 1
@@ -389,7 +410,7 @@ class rtCanvas(MyCanvas):
                     interval += 1
                     subtree.block.botR.x = new_block.botR.x - interval * LABEL_MAX_WIDTH
                     subtree.block.calculate_width_height()
-                    self.output = self.sorted_layer_list
+
                     redraw_layer = self.sorted_layer_list.index(subtree.label)
                     self[redraw_layer].clear()
                     self.draw_rec(subtree.block.topL.x, subtree.block.topL.y, subtree.block.width, subtree.block.height,
@@ -446,48 +467,57 @@ class rtCanvas(MyCanvas):
 class tcCanvas(MyCanvas):
     id = None
     ad_list = []
+    AD_LAYER = -1
 
-    def __init__(self,tree,width=1100, height=1100):
-        super().__init__(width = width, height = height)
+    def __init__(self,tree,width=1100, height=1100,scale=1.0,max_ad=None):
+        super().__init__(5, width = width, height = height)
+        self.ad_list = []
+        self.scale = scale
+        self.max_ad = max_ad
+        self.default_value()
+
+        # Initialization
         self.tree = tree
-        self.rt_canvas = tree.rt_canvas
+        self.rt = tree.rt
+        self.tc = tree.tc
+        self.subtree_list = tree.subtree_list
+        self.block_minimum_height = BLOCK_MINIMUM_HEIGHT[len(self.subtree_list) % MAX_SUBTREE]
 
-    def construct_ad(self,tree_index,node=None):
-        if node is None:
-            ad = Tree.AD(tree=self.tree.tc[tree_index])
-            self.ad_list.append(ad)
-            node = ad.tree.seed_node
+        for subtree in self.subtree_list:
+            subtree.get_leaf_nodes()
 
-        # Subtree : label,rt,root,color,block
+        for index,tc_tree in enumerate(self.tc):
+            # print("tc_tree " + str(index))
+            self.construct_ad(tc_tree=tc_tree, level=1)
+            # self.ad_list[index].plot_tree()
 
+            # print("=============")
 
-    def check_relation(self,subtree,node,tree_index):
-        print(type(subtree.leaf_set))
+        self.preprocess_ad_tree()
+        self.draw_ad_tree_rec()
 
-        if node == subtree.root.corr[tree_index]:
-            return SUBTREE_ROOT
+        # print("after construct ad")
 
-        if node.is_leaf():
-            if node.taxon.label in subtree.leaf_set:
-                return INDEPENDENT_LEAF
+        for index,ad_tree in enumerate(self.ad_list):
+            if self.max_ad:
+                if index >= max_ad:
+                    break
 
-        node_leaf = {leaf.taxon.label for leaf in node.leaf_nodes()}
+            # print("ad_tree " + str(index))
+            # print("topL.x:" + str(ad_tree.topL.x))
+            # print("topL.y:" + str(ad_tree.topL.y))
+            # print("botR.x: " + str(ad_tree.botR.x))
+            # print("botR.y: " + str(ad_tree.botR.y))
 
-        print(type(node_leaf))
-        print(type(subtree.leaf_set))
+            self.draw_ad_tree(ad_tree)
+            self[self.AD_LAYER].flush()
+            # print("draw_ad")
 
-        if node_leaf.intersection(subtree.leaf_set):
-            return IS_DESCENDANT
-
-        return NON_DESCENDANT
-
-    def blank_block(self,x,y):
-        block =  Block(Point(x,y),Point(x + 30,y + 7))
-        return block
-
-    def ad_subtree_block(self,x,y):
-        block =  Block(Point(x,y),None)
-        return block
+    def default_value(self):
+        self.padding = DEFAULT_AD_PADDING  # Padding between ADs
+        self.ad_per_row = DEFAULT_AD_PER_ROW
+        self.ad_width = DEFAULT_AD_WIDTH
+        self.ad_height = DEFAULT_AD_HEIGHT
 
     # y-padding = 5
     # y-gap between block = 3
@@ -495,114 +525,311 @@ class tcCanvas(MyCanvas):
     # block_height = block_node_amount/node_amount * block space
     # independent leaf node(from subtree) has same size as blank block
 
-    def construct_ad(self,tree_index,node=None,level=0):
-        # Default : Tree root as reference tree's root
-        if node is None:
-            node = self[-1].tree.seed_node
+    # Traverse from root, and see whether descendant is target subtree/leaf node(need to compare all target leaf node, in case there have
+    # any independent leaf node), if not descendant, append a blank block
+    # if has descendant, continue traverse along the specific child
+    # if current node is root of target subtree → append a subtree block
+    # if found a target leaf node (means independent leaf node), append a leaf node block which same size as blank block
 
-        for child in node.child_node_iter():
-            self.draw_rt(child, level + 1)
+    # Function to construct AD_Tree for trees from tree collection
+    # Traverse from root, check all child nodes relations, if not BLANK block, traverse along the child
+    def construct_ad(self,tc_tree,tc_node=None,current_ad_node=None,level=0):
 
-        # Set canvas style
-        self[-1].fill_style = BLACK
-        self[-1].font = LEAF_FONT
+        if tc_node is None and current_ad_node is None: # When start from root
+            tc_node = tc_tree.seed_node
 
+            ad = myTree.AD_Tree(id=tc_tree.id,tc_tree=tc_tree,tc_canvas=self)  # Create a new AD_Tree which belong to current tc_tree
+            ad.root = myTree.AD_Node(node_or_block=tc_node,x_level=level,type=ROOT)  # Set ad_tree's root
+            current_ad_node = ad.root
+            self.ad_constructing = ad
+            self.ad_list.append(ad)
+
+        for child in tc_node.child_node_iter():
+            # print("Child:")
+            # print(child)
+
+            result = NON_DESCENDANT
+            for subtree in self.subtree_list:
+                result = self.check_relation(subtree=subtree,node=child,tree_index = tc_tree.id)
+
+                if result == INDEPENDENT_LEAF:
+                    # print("INDEPENDENT_LEAF")
+                    # width,height,subtree,ad_tree,type,topL=None, botR=None
+                    independent_leaf_block = self.individual_block(subtree=subtree,type=INDIVIDUAL_LEAF_BLOCK)
+                    independent_leaf_block.color = subtree.color
+                    independent_leaf_block.root = child
+                    independent_leaf_block.taxa_list.add(child.taxon.label)
+                    independent_leaf_block.taxa_count = 1
+                    new_ad_node = myTree.AD_Node(node_or_block=independent_leaf_block, x_level=level, type=LEAF)
+                    self.ad_constructing.insert_node(current_ad_node,new_ad_node)
+                    # current_ad_node.children.append(new_ad_node)
+
+                    break
+
+                if result == SUBTREE_ROOT:
+                    # print("SUBTREE")
+
+                    subtree_block = self.ad_subtree_block(subtree=subtree)
+                    subtree_block.color = subtree.color
+                    subtree_block.root = child
+
+                    subtree_block.taxa_list = {leaf.taxon.label for leaf in child.leaf_nodes()}
+                    subtree_block.taxa_count = len(subtree_block.taxa_list.intersection(subtree.leaf_set))
+
+                    if subtree_block.taxa_count == len(subtree.leaf_set):
+                        subtree_block.exact_match = True
+                    else:
+                        subtree_block.exact_match = False
+
+                    new_ad_node = myTree.AD_Node(node_or_block=subtree_block, x_level=level, type=LEAF)
+
+                    self.ad_constructing.insert_node(current_ad_node, new_ad_node)
+                    # current_ad_node.children.append(new_ad_node)
+
+                    break
+
+                if result == IS_DESCENDANT:
+                    # print("IS_DESCENDANT")
+                    new_ad_node = myTree.AD_Node(node_or_block=child, x_level=level, type=INTERNAL)
+                    self.ad_constructing.insert_node(current_ad_node, new_ad_node)
+                    # current_ad_node.children.append(new_ad_node)
+                    self.construct_ad(tc_tree=tc_tree,tc_node=child,current_ad_node=new_ad_node,level=level+1)
+
+                    break
+
+            if result == NON_DESCENDANT:
+                # print("NON_DESCENDANT")
+                non_descendant_block = self.individual_block(subtree=None,type=INDIVIDUAL_BLOCK)
+                non_descendant_block.color = BLANK
+                non_descendant_block.root = child
+                new_ad_node = myTree.AD_Node(node_or_block=non_descendant_block, x_level=level, type=LEAF)
+                self.ad_constructing.insert_node(current_ad_node, new_ad_node)
+                # current_ad_node.children.append(new_ad_node)
+
+
+        # Subtree : label,rt,root,color,block
+
+    # Function to check whether current branch/node related with target subtree/taxa
+    def check_relation(self,subtree,node,tree_index):
+        # subtree = subtree from subtree_list
+        # node = node from tc_tree
+        # tree_index = tc_tree's id
+
+        # If node from tc is target leaf node in this subtree
         if node.is_leaf():
-            # Calculate node's x,y coordinates
-            if self.view_support:
-                x = self.x * level
-            else:
-                x = X_INTERVAL * level + X_INTERVAL
+            if node.taxon.label in subtree.leaf_set:
+                return INDEPENDENT_LEAF
 
-            node.pos = Point(x,self.y)  # Node position
+        # If cunode is subtree's root
+        if node == subtree.root.corr[tree_index]:
+            return SUBTREE_ROOT
 
-            self.y += Y_INTERVAL
-            node.level = level
+        leaf_nodes = {leaf.taxon.label for leaf in node.leaf_nodes()}
 
-            # Mouse click range of current leaf node
-            range_topL = Point(node.pos.x, node.pos.y - NODE_BLOCK_HEIGHT)
-            range_botR = Point(range_topL.x + X_INTERVAL + len(str(node.taxon.label)) * 12,
-                               range_topL.y + NODE_BLOCK_HEIGHT + 3)
-            node.mouse_range = Block(range_topL,range_botR)
-            node.block = Block(range_topL,range_botR)
+        # If target taxa is descendant of node
+        if leaf_nodes.intersection(subtree.leaf_set):
+            return IS_DESCENDANT
 
-            if range_botR.x > self.tree_width:
-                self.tree_width = range_botR.x
+        # If current branch has no target taxa
+        return NON_DESCENDANT
 
-            self.draw_leaf_node(node)
+    # Function for ad_drawing preprocess
+    # Draw AD in tc_canvas
+    def preprocess_ad_tree(self):
+        # Comfirm canvas scale
+        # Preprocess ad_tree
+        # 1. set position and size for all ad_tree
+        # 2. set width and height for individual_block in every ad_tree
+        # 3.
+        self.default_value()
 
-            # Testing
-            # self.draw_dots(node.pos.x + X_INTERVAL - 5 , node.pos.y - NODE_BLOCK_HEIGH  T)
-            # self.draw_dots(node.pos.x + X_INTERVAL + len(str(node.taxon.label)) * 9, node.pos.y + 2)
-            # self.draw_rec(node.pos.x + X_INTERVAL - 2,node.pos.y - NODE_BLOCK_HEIGHT,X_INTERVAL + len(str(node.taxon.label)) * 9,NODE_BLOCK_HEIGHT+2)
+        # Calculate AD size, AD per row and padding
+        self.ad_width = DEFAULT_AD_WIDTH * self.scale
+        self.ad_height = DEFAULT_AD_HEIGHT * self.scale
+        self.ad_per_row = ((self.width - (3 * self.padding)) // self.ad_width)
 
-        else:
-            child_nodes = node.child_nodes()
+        while (self.width - ( self.ad_width * self.ad_per_row + 2 * self.padding )) < (self.ad_per_row-2) * self.padding :
+            self.ad_per_row -= 1
 
-            # To determine the midpoint of vertical line connecting multiple children
-            first_child = child_nodes[0] if child_nodes else None
-            last_child = child_nodes[-1] if child_nodes else None
+        # padding_space = self.width - 4 * self.padding - (self.ad_per_row * self.ad_width)
+        # self.padding = padding_space // (self.ad_per_row-1)
 
-            if self.view_support:
-                x = self.x * level
-            else:
-                x = X_INTERVAL * level + X_INTERVAL
+        # print("ad_width:" + str(self.ad_width))
+        # print("ad_height:" + str(self.ad_height))
+        # print("ad_per_row:" + str(self.ad_per_row))
+        # print("padding:" + str(self.padding))
 
-            tmp = first_child.pos.y + last_child.pos.y
-            node.pos = Point(x, tmp / 2)
+        ad_y = 20
 
-            # Mouse click range of current internal node
-            range_topL = Point(node.pos.x + 3, first_child.pos.y)
-            range_botR = Point(range_topL.x + X_INTERVAL, last_child.pos.y - X_INTERVAL)
-            node.mouse_range = Block(range_topL, range_botR)
+        for index,ad_tree in enumerate(self.ad_list):
+            # Set ad_tree position and size
+                # Check if line break
+            if index % self.ad_per_row == 0 and index != 0:
+                ad_y += DEFAULT_AD_HEIGHT * self.scale + self.padding
 
-            # Draw vertical branch
-            self[-1].begin_path()
-            self[-1].move_to(first_child.pos.x, first_child.pos.y - 5)
-            self[-1].line_to(last_child.pos.x, last_child.pos.y - 5)
-            self[-1].stroke()
+                # Calculate AD_Tree position in row
+            ad_index = index % self.ad_per_row
+            ad_x = self.padding + (ad_index * self.ad_width) + (ad_index * self.padding)
 
-            # Drawing horizontal branch
-            self[-1].begin_path()
-            self[-1].move_to(node.pos.x , node.pos.y - 5)
-            if self.view_support:
-                self[-1].line_to(self.x * (level+1), node.pos.y - 5)
-            else:
-                self[-1].line_to(X_INTERVAL * (level + 1) + X_INTERVAL, node.pos.y - 5)
-            self[-1].stroke()
+            ad_tree.set_position_size(ad_x,ad_y)
 
-            if self.view_support:
-                self[-1].fill_style = 'blue'
-                if node.label:
-                    self[-1].fill_text(node.label, node.pos.x + 3, node.pos.y - 8)
-                self[-1].fill_style = BLACK
+            # Calculate block size in each ad_tree
+            indv_block_width = DEFAULT_INDV_BLOCK_WIDTH * self.scale
+            indv_block_height = DEFAULT_INDV_BLOCK_HEIGHT * self.scale
 
-            # Testing
-            # self.draw_dots(node.pos.x + X_INTERVAL - 4, node.pos.y - X_INTERVAL)
-            # self.draw_dots(node.pos.x + X_INTERVAL + 4, node.pos.y )
-            # self.draw_rec(node.range_topL.x,node.range_topL.y,8,node.range_botR.y - node.range_topL.y,BEIGE)
+            indv_block_list,subtree_block_list = ad_tree.individual_subtree_block_list()
 
-        # To calculate and record subtree's block size
-        if node.parent_node:
-            if hasattr(node.parent_node, 'block'):
-                if node.block.topL.y < node.parent_node.block.topL.y:
-                    node.parent_node.block.topL = node.block.topL
+            for indv_block in indv_block_list:
+                indv_block.width = indv_block_width
+                indv_block.height = indv_block_height
 
-                if node.block.botR.y > node.parent_node.block.botR.y:
-                    node.parent_node.block.botR = node.block.botR
-            else:
-                node.parent_node.block = Block(node.block.topL,node.block.botR)
-
-        # Testing
-        # self.draw_dots(node.pos.x,node.pos.y - X_INTERVAL)
-        # self.draw_dots(node.pos.x + X_INTERVAL, node.pos.y)
-        # self.draw_dots(node.pos.x + X_INTER0L.y,8,node.range_botR.y - node.range_topL.y,BEIGE)
+            allocatable_space = ad_tree.allocatable_ad_space()
+            taxa_cnt = ad_tree.ad_taxa_total()
 
 
+            for subtree_block in subtree_block_list:
+                subtree_block.height = self.block_minimum_height + ( len(subtree_block.belong_subtree.leaf_set) / taxa_cnt * allocatable_space)
+
+    # Before draw_ad, must confirm these variable has been altered according scale
+    # canvas.padding(padding might change when ad_per_row change)
+    # AD_HEIGHT / AD_WIDTH / ad_per_row /
+    # Some variable remain the same
+    # ad_tree.padding / ad_tree.initial_x,initial_y /
+    # Function to draw ad_tree in each AD
+    # Statement in this function will only involve one ad_tree
+    def draw_ad_tree(self,ad_tree=None, ad_node=None):
+
+        if ad_node == None:
+            ad_node = ad_tree.root
+
+        for node in ad_tree.traverse_postorder():
+            if node.type == LEAF:
+                block = node.node_or_block
+
+                # Calculate block's position and
+                x = ad_tree.topL.x + ad_tree.x  + (ad_tree.x * node.x_level)  # ad_pos + padding
+                y = ad_tree.topL.y + ad_tree.y
+
+                block.topL = Point(x, y)
+                block.botR = Point(ad_tree.botR.x - ad_tree.x, y + block.height)
 
 
+                # Calculate branch position
+                node.construct_branch(x,y + (block.height / 2))
+
+                # self.branch_head = Point(self.topL.x - AD_BRANCH_LENGTH, self.topL.y + (self.height / 2))
+                # self.branch_tail = Point(self.topL.x, self.topL.y + (self.height / 2))
+
+                # Draw block
+                if block.type == INDIVIDUAL_BLOCK:
+                    block.width = DEFAULT_INDV_BLOCK_WIDTH * self.scale
+                    if block.topL.x + block.width >= ad_tree.botR.x:
+                        block.botR.x = ad_tree.botR.x - 5
+                        block.width = block.botR.x - block.topL.x
+
+                    self.draw_frame(block.topL.x, block.topL.y, block.width, block.height,
+                                  GREY,
+                                  layer_index=self.AD_LAYER)
+
+                elif block.type == INDIVIDUAL_LEAF_BLOCK:
+                    block.width = DEFAULT_INDV_BLOCK_WIDTH * self.scale
+                    if block.topL.x + block.width >= ad_tree.botR.x:
+                        block.botR.x = ad_tree.botR.x - 5
+                        block.width = block.botR.x - block.topL.x
+
+                    self.draw_exact_match_block(block.topL.x, block.topL.y, block.width, block.height,
+                                  block_color=block.color,frame_color=GREY,
+                                  layer_index=self.AD_LAYER)
+
+                elif block.type == SUBTREE_BLOCK:
+                    block.width = block.botR.x - block.topL.x
+
+                    # Draw subtree block
+                    if block.exact_match:
+                        self.draw_exact_match_block(block.topL.x, block.topL.y, block.width, block.height,
+                                      block_color=block.color,frame_color=BLACK,
+                                      layer_index=self.AD_LAYER)
+                    else:
+                        self.draw_inexact_match_block(block.topL.x, block.topL.y, block.width, block.height,
+                                                    block_color=block.color,frame_color=BLACK,
+                                                    layer_index=self.AD_LAYER)
+
+                    self.write_ad_block_label(block)
 
 
+                ad_tree.y += block.height + ad_tree.padding
+
+            if node.type == INTERNAL or node.type == ROOT:
+                first_child = node.children[0]
+                last_child = node.children[-1]
+
+                # Check whether branch length of two children is different
+                x = first_child.branch_head.x if first_child.branch_head.x < last_child.branch_head.x else last_child.branch_head.x
+                node.unify_children_branches(x)
+                # first_child.branch_head.x = x
+                # last_child.branch_head.x = x
+
+                y = first_child.branch_head.y + ((last_child.branch_head.y - first_child.branch_head.y) / 2)
+
+                node.construct_branch(x, y)
+
+                # Draw vertical branch linking two children
+                self.draw_solid_line(Point(x, first_child.branch_head.y), Point(x, last_child.branch_head.y), BLACK,
+                                     self.AD_LAYER)
+
+                if node.type == ROOT:
+                    # Draw horizontal branch
+                    self.draw_solid_line(node.branch_head, node.branch_tail, BLACK, self.AD_LAYER)
+
+                # Draw children's branches
+                for child in node.children:
+                    self.draw_solid_line(child.branch_head, child.branch_tail, BLACK, self.AD_LAYER)
+    def write_ad_block_label(self,block):
+        subtree_label = block.belong_subtree.label
+        taxa_cnt = str(block.taxa_count)
+
+        label_width = (len(taxa_cnt) * 10) * self.scale
+
+        self[self.AD_LAYER].font = f'{13 * self.scale}px Times New Romans'
+        # Write subtree label on top left corner
+        self[self.AD_LAYER].fill_style = BLACK
+        self[self.AD_LAYER].fill_text(subtree_label, block.topL.x + 5, block.topL.y + (12 * self.scale))
+
+        # Write taxa count on top right corner
+        self[self.AD_LAYER].fill_text(taxa_cnt, block.botR.x - label_width, block.topL.y + (12 * self.scale))
+
+    def individual_block(self,subtree,type=INDIVIDUAL_BLOCK):
+        #  Default size : 30x7
+        #  Default : topL=Point(x,y),botR=Point(x + 30,y + 7)
+
+        block =  AD_Block(width=DEFAULT_INDV_BLOCK_WIDTH * self.scale, height=DEFAULT_INDV_BLOCK_HEIGHT * self.scale, subtree=subtree, ad_tree=self.ad_constructing, type=type)
+        return block
+
+
+    def ad_subtree_block(self,subtree):
+        # AD_Block height depends on node amount, width depends on x_level and tree_width
+        block =  AD_Block(width=None,height=None,subtree=subtree,ad_tree=self.ad_constructing,type=SUBTREE_BLOCK)
+        return block
+
+    def draw_exact_match_block(self,x,y,width,height,block_color,frame_color,layer_index = -1):
+        self.draw_rec(x,y,width,height,block_color,layer_index=layer_index)
+        self.draw_frame(x, y, width, height, frame_color, layer_index=layer_index)
+
+    def draw_inexact_match_block(self,x,y,width,height,block_color,frame_color,layer_index = -1):
+        self.draw_rec(x, y, width, height, block_color, layer_index=layer_index)
+        self.draw_dotted_line(Point(x,y),Point(x+width,y),frame_color,line_dash_index=1, layer_index=layer_index)
+        self.draw_dotted_line(Point(x+width,y), Point(x + width, y+height), frame_color,line_dash_index=1, layer_index=layer_index)
+        self.draw_dotted_line(Point(x, y), Point(x, y+height), frame_color, line_dash_index=1,layer_index=layer_index)
+        self.draw_dotted_line(Point(x, y+height), Point(x + width, y + height), frame_color,line_dash_index=1, layer_index=layer_index)
+
+
+    # For testing
+    def draw_ad_tree_rec(self):
+        for index,ad_tree in enumerate(self.ad_list):
+            if self.max_ad:
+                if index >= self.max_ad:
+                    break
+            self.draw_frame(ad_tree.topL.x,ad_tree.topL.y,ad_tree.width,ad_tree.height,BLACK,self.AD_LAYER)
 
 
 
@@ -613,6 +840,63 @@ AD width = 135
 AD height = 150
 x-gap/y-gap between AD = 20
 '''
+
+
+class Point():
+    def __init__(self,x,y):
+        self.x = x
+        self.y = y
+
+class Block():
+    def __init__(self,topL,botR):
+        self.topL = topL
+        self.botR = botR
+        self.branch_x = None
+
+        if topL and botR:
+            self.calculate_width_height()
+
+    def check_in_range(self,point):
+        return point.x >= self.topL.x and point.x <= self.botR.x and point.y >= self.topL.y and point.y <= self.botR.y
+
+    def print_block(self):
+        print("topL = (",self.topL.x,",",self.topL.y,")")
+        print("botR = (",self.botR.x,",",self.botR.y,")")
+
+    def get_size(self):
+        return self.botR.y - self.topL.y
+
+    def calculate_width_height(self):
+        self.width = self.botR.x - self.topL.x
+        self.height = self.botR.y - self.topL.y
+
+    def check_nested_block(self,block):
+        return self.check_in_range(block.topL) and block.botR.y <= self.botR.y
+
+# Block for ad_tree
+class AD_Block(Block):
+    # id = None  # Block id in ad_tree
+
+    def __init__(self, width,height,subtree,ad_tree,type,topL=None, botR=None):
+        super().__init__(topL, botR)
+        self.root = None  # To record this block represent which branch. If represent a subtree,root is subtree root
+        self.taxa_list = set()  # Optional, taxa_list may ignore if has root(root is node from tc_tree,thus can get leaf_node via root)
+        self.taxa_count = 0
+        self.color = None
+        self.belong_subtree = subtree
+        self.belong_ad_tree = ad_tree
+
+        self.type = type
+        self.width = width
+        self.height = height
+
+    def construct_branch(self):
+        self.branch_head = Point(self.topL.x - (AD_BRANCH_LENGTH * self.scale),self.topL.y + (self.height/2))
+        self.branch_tail = Point(self.topL.x ,self.topL.y + (self.height/2))
+
+
+
+
 
 
 
