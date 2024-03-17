@@ -481,14 +481,21 @@ class tcCanvas(MyCanvas):
         self.rt = tree.rt
         self.tc = tree.tc
         self.subtree_list = tree.subtree_list
-        self.block_minimum_height = BLOCK_MINIMUM_HEIGHT[len(self.subtree_list) % MAX_SUBTREE]
+
 
         for subtree in self.subtree_list:
             subtree.get_leaf_nodes()
 
+        self.subtree_list = sorted(self.subtree_list, key=lambda x: len(x.leaf_set), reverse=True)
+
+        # for subtree in self.subtree_list:
+        #     print(subtree.label)
+        #     print(subtree.root.corr[0])
+
+
         for index,tc_tree in enumerate(self.tc):
             # print("tc_tree " + str(index))
-            self.construct_ad(tc_tree=tc_tree, level=1)
+            self.construct_ad(tc_tree=tc_tree, level=1,)
             # self.ad_list[index].plot_tree()
 
             # print("=============")
@@ -519,21 +526,7 @@ class tcCanvas(MyCanvas):
         self.ad_width = DEFAULT_AD_WIDTH
         self.ad_height = DEFAULT_AD_HEIGHT
 
-    # y-padding = 5
-    # y-gap between block = 3
-    # block space = ad_height - 10 - (block_amount-1) * 3
-    # block_height = block_node_amount/node_amount * block space
-    # independent leaf node(from subtree) has same size as blank block
-
-    # Traverse from root, and see whether descendant is target subtree/leaf node(need to compare all target leaf node, in case there have
-    # any independent leaf node), if not descendant, append a blank block
-    # if has descendant, continue traverse along the specific child
-    # if current node is root of target subtree → append a subtree block
-    # if found a target leaf node (means independent leaf node), append a leaf node block which same size as blank block
-
-    # Function to construct AD_Tree for trees from tree collection
-    # Traverse from root, check all child nodes relations, if not BLANK block, traverse along the child
-    def construct_ad(self,tc_tree,tc_node=None,current_ad_node=None,level=0):
+    def construct_ad(self,tc_tree,tc_node=None,current_ad_node=None,level=0,nested_subtree=None,nested_ad=None):
 
         if tc_node is None and current_ad_node is None: # When start from root
             tc_node = tc_tree.seed_node
@@ -544,103 +537,167 @@ class tcCanvas(MyCanvas):
             self.ad_constructing = ad
             self.ad_list.append(ad)
 
+            for subtree in self.subtree_list:
+                result = self.check_relation(subtree=subtree,node=tc_node,tree_index = tc_tree.id)
+                if result == SUBTREE_ROOT:
+                    self.generate_block_by_result(result=result, subtree=subtree, tc_tree=tc_tree, tc_node=tc_node,
+                                                  current_ad_node=current_ad_node \
+                                                  , level=level, nested_subtree=nested_subtree, nested_ad=nested_ad)
+
+                    return
+
+
         for child in tc_node.child_node_iter():
+            # print("============")
             # print("Child:")
             # print(child)
+            # print(nested_subtree)
 
             result = NON_DESCENDANT
             for subtree in self.subtree_list:
-                result = self.check_relation(subtree=subtree,node=child,tree_index = tc_tree.id)
 
-                if result == INDEPENDENT_LEAF:
-                    # print("INDEPENDENT_LEAF")
-                    # width,height,subtree,ad_tree,type,topL=None, botR=None
-                    independent_leaf_block = self.individual_block(subtree=subtree,type=INDIVIDUAL_LEAF_BLOCK)
-                    independent_leaf_block.color = subtree.color
-                    independent_leaf_block.root = child
-                    independent_leaf_block.taxa_list.add(child.taxon.label)
-                    independent_leaf_block.taxa_count = 1
-                    new_ad_node = myTree.AD_Node(node_or_block=independent_leaf_block, x_level=level, type=LEAF)
-                    self.ad_constructing.insert_node(current_ad_node,new_ad_node)
-                    # current_ad_node.children.append(new_ad_node)
+                if nested_subtree and subtree.label in nested_subtree:
+                    continue
 
+                result_tmp = self.check_relation(subtree=subtree,node=child,tree_index = tc_tree.id)
+
+                if result_tmp < result:
+                    result = result_tmp
+
+                if result == SUBTREE_ROOT or result == INDEPENDENT_LEAF:
                     break
 
-                if result == SUBTREE_ROOT:
-                    # print("SUBTREE")
+            self.generate_block_by_result(result=result,subtree=subtree,tc_tree=tc_tree,tc_node=child,current_ad_node=current_ad_node\
+                                          ,level=level,nested_subtree=nested_subtree,nested_ad=nested_ad)
 
-                    subtree_block = self.ad_subtree_block(subtree=subtree)
-                    subtree_block.color = subtree.color
-                    subtree_block.root = child
 
-                    subtree_block.taxa_list = {leaf.taxon.label for leaf in child.leaf_nodes()}
-                    subtree_block.taxa_count = len(subtree_block.taxa_list.intersection(subtree.leaf_set))
 
-                    if subtree_block.taxa_count == len(subtree.leaf_set):
-                        subtree_block.exact_match = True
-                    else:
-                        subtree_block.exact_match = False
+    def generate_block_by_result(self,result,subtree,tc_tree,tc_node=None,current_ad_node=None,level=0,nested_subtree=None,nested_ad=None):
 
-                    new_ad_node = myTree.AD_Node(node_or_block=subtree_block, x_level=level, type=LEAF)
+        if result == INDEPENDENT_LEAF:
+            # print("INDEPENDENT_LEAF")
+            # print("Subtree:" + subtree.label)
+            # width,height,subtree,ad_tree,type,topL=None, botR=None
+            independent_leaf_block = self.individual_block(subtree=subtree, type=INDIVIDUAL_LEAF_BLOCK)
+            independent_leaf_block.color = subtree.color
+            independent_leaf_block.root = tc_node
+            independent_leaf_block.taxa_list.add(tc_node.taxon.label)
+            independent_leaf_block.taxa_count = 1
+            new_ad_node = myTree.AD_Node(node_or_block=independent_leaf_block, x_level=level, type=LEAF)
 
-                    self.ad_constructing.insert_node(current_ad_node, new_ad_node)
-                    # current_ad_node.children.append(new_ad_node)
-
-                    break
-
-                if result == IS_DESCENDANT:
-                    # print("IS_DESCENDANT")
-                    new_ad_node = myTree.AD_Node(node_or_block=child, x_level=level, type=INTERNAL)
-                    self.ad_constructing.insert_node(current_ad_node, new_ad_node)
-                    # current_ad_node.children.append(new_ad_node)
-                    self.construct_ad(tc_tree=tc_tree,tc_node=child,current_ad_node=new_ad_node,level=level+1)
-
-                    break
-
-            if result == NON_DESCENDANT:
-                # print("NON_DESCENDANT")
-                non_descendant_block = self.individual_block(subtree=None,type=INDIVIDUAL_BLOCK)
-                non_descendant_block.color = BLANK
-                non_descendant_block.root = child
-                new_ad_node = myTree.AD_Node(node_or_block=non_descendant_block, x_level=level, type=LEAF)
+            if nested_ad:
+                nested_ad.insert_node(current_ad_node, new_ad_node)
+            else:
                 self.ad_constructing.insert_node(current_ad_node, new_ad_node)
-                # current_ad_node.children.append(new_ad_node)
+            # current_ad_node.children.append(new_ad_node)
+
+        elif result == SUBTREE_ROOT:
+            # print("SUBTREE")
+
+            subtree_block = self.ad_subtree_block(subtree=subtree)
+            subtree_block.color = subtree.color
+            subtree_block.root = tc_node
+
+            subtree_block.taxa_list = {leaf.taxon.label for leaf in tc_node.leaf_nodes()}
+            subtree_block.taxa_count = len(subtree_block.taxa_list.intersection(subtree.leaf_set))
+
+            if subtree_block.taxa_count == len(subtree.leaf_set):
+                subtree_block.exact_match = True
+            else:
+                subtree_block.exact_match = False
+
+            new_ad_node = myTree.AD_Node(node_or_block=subtree_block, x_level=level, type=LEAF)
+
+            if nested_ad:
+                nested_ad.insert_node(current_ad_node, new_ad_node)
+            else:
+                self.ad_constructing.insert_node(current_ad_node, new_ad_node)
+            # current_ad_node.children.append(new_ad_node)
+
+            if tc_node.is_leaf():
+                return
+
+            # Check nested subtree/block
+            for check_subtree in self.subtree_list:
+                if check_subtree == subtree or (nested_subtree and check_subtree.label in nested_subtree):
+                    continue
+
+                if self.check_target_in_descendant(check_subtree, tc_node) == IS_DESCENDANT:
+                    if nested_subtree:
+                        nested_subtree += subtree.label
+                    else:
+                        nested_subtree = subtree.label
+
+                    self.ad_constructing.nested_cnt += 1
+                    nested_ad = myTree.AD_Tree(id=self.ad_constructing.id, tc_tree=tc_tree, tc_canvas=self)
+                    nested_ad.root = myTree.AD_Node(node_or_block=tc_node, x_level=0, type=ROOT)
+                    nested_ad.is_nested = True
+                    new_ad_node.nested_tree = nested_ad
+                    subtree_block.nested_tree = nested_ad
+
+                    self.construct_ad(tc_tree=tc_tree, tc_node=tc_node, current_ad_node=nested_ad.root, level=1,
+                                      nested_subtree=nested_subtree, nested_ad=nested_ad)
+
+                    break
+
+        elif result == IS_DESCENDANT:
+            # print("IS_DESCENDANT")
+            new_ad_node = myTree.AD_Node(node_or_block=tc_node, x_level=level, type=INTERNAL)
+            if nested_ad:
+                nested_ad.insert_node(current_ad_node, new_ad_node)
+            else:
+                self.ad_constructing.insert_node(current_ad_node, new_ad_node)
+            # current_ad_node.children.append(new_ad_node)
+            self.construct_ad(tc_tree=tc_tree, tc_node=tc_node, current_ad_node=new_ad_node, level=level + 1,
+                              nested_subtree=nested_subtree, nested_ad=nested_ad)
 
 
-        # Subtree : label,rt,root,color,block
+
+        elif result == NON_DESCENDANT:
+            # print("NON_DESCENDANT")
+            non_descendant_block = self.individual_block(subtree=None, type=INDIVIDUAL_BLOCK)
+            non_descendant_block.color = BLANK
+            non_descendant_block.root = tc_node
+            new_ad_node = myTree.AD_Node(node_or_block=non_descendant_block, x_level=level, type=LEAF)
+
+            if nested_ad:
+                nested_ad.insert_node(current_ad_node, new_ad_node)
+            else:
+                self.ad_constructing.insert_node(current_ad_node, new_ad_node,)
+            # current_ad_node.children.append(new_ad_node)
+
+
 
     # Function to check whether current branch/node related with target subtree/taxa
     def check_relation(self,subtree,node,tree_index):
-        # subtree = subtree from subtree_list
-        # node = node from tc_tree
-        # tree_index = tc_tree's id
+
+        # If cunode is subtree's root
+        if node == subtree.root.corr[tree_index]:
+            return SUBTREE_ROOT
 
         # If node from tc is target leaf node in this subtree
         if node.is_leaf():
             if node.taxon.label in subtree.leaf_set:
                 return INDEPENDENT_LEAF
 
-        # If cunode is subtree's root
-        if node == subtree.root.corr[tree_index]:
-            return SUBTREE_ROOT
-
-        leaf_nodes = {leaf.taxon.label for leaf in node.leaf_nodes()}
-
-        # If target taxa is descendant of node
-        if leaf_nodes.intersection(subtree.leaf_set):
+        if self.check_target_in_descendant(subtree,node) == IS_DESCENDANT:
             return IS_DESCENDANT
 
         # If current branch has no target taxa
         return NON_DESCENDANT
 
+    def check_target_in_descendant(self,subtree,node):
+        leaf_nodes = {leaf.taxon.label for leaf in node.leaf_nodes()}
+
+        if leaf_nodes.intersection(subtree.leaf_set):
+            return IS_DESCENDANT
+
+        else:
+            return False
+
     # Function for ad_drawing preprocess
     # Draw AD in tc_canvas
     def preprocess_ad_tree(self):
-        # Comfirm canvas scale
-        # Preprocess ad_tree
-        # 1. set position and size for all ad_tree
-        # 2. set width and height for individual_block in every ad_tree
-        # 3.
         self.default_value()
 
         # Calculate AD size, AD per row and padding
@@ -651,9 +708,7 @@ class tcCanvas(MyCanvas):
         while (self.width - ( self.ad_width * self.ad_per_row + 2 * self.padding )) < (self.ad_per_row-2) * self.padding :
             self.ad_per_row -= 1
 
-        # padding_space = self.width - 4 * self.padding - (self.ad_per_row * self.ad_width)
-        # self.padding = padding_space // (self.ad_per_row-1)
-
+        # Testing
         # print("ad_width:" + str(self.ad_width))
         # print("ad_height:" + str(self.ad_height))
         # print("ad_per_row:" + str(self.ad_per_row))
@@ -669,26 +724,92 @@ class tcCanvas(MyCanvas):
 
                 # Calculate AD_Tree position in row
             ad_index = index % self.ad_per_row
-            ad_x = self.padding + (ad_index * self.ad_width) + (ad_index * self.padding)
+            ad_x = self.padding + (ad_index * self.ad_width) + (ad_index * (self.padding-5))
 
             ad_tree.set_position_size(ad_x,ad_y)
 
-            # Calculate block size in each ad_tree
-            indv_block_width = DEFAULT_INDV_BLOCK_WIDTH * self.scale
-            indv_block_height = DEFAULT_INDV_BLOCK_HEIGHT * self.scale
+            self.indv_block_width = DEFAULT_INDV_BLOCK_WIDTH * self.scale
+            self.indv_block_height = DEFAULT_INDV_BLOCK_HEIGHT * self.scale
+            self.nested_block_height = NESTED_BLOCK_MINIMUM_HEIGHT * self.scale
+            self.block_minimum_height = BLOCK_MINIMUM_HEIGHT[len(self.subtree_list) % MAX_SUBTREE] * self.scale
 
-            indv_block_list,subtree_block_list = ad_tree.individual_subtree_block_list()
+            # Testing
+            # print("indv_block_width = " + str(self.indv_block_width))
+            # print("indv_block_height = " + str(self.indv_block_height))
+            # print("nested_block_height = " + str(self.nested_block_height))
+            # print("block_minimum_height = " + str(self.block_minimum_height))
 
-            for indv_block in indv_block_list:
-                indv_block.width = indv_block_width
-                indv_block.height = indv_block_height
+            sufficient_space = self.adjust_ad_block(ad_tree)
 
-            allocatable_space = ad_tree.allocatable_ad_space()
-            taxa_cnt = ad_tree.ad_taxa_total()
+            while sufficient_space < 0:
+                # print("Space not enoughh")
+                reduction = abs(sufficient_space)
+                self.indv_block_width -= reduction
+                self.indv_block_height -= reduction
+                self.nested_block_height -= reduction
+                self.block_minimum_height -= reduction
+
+                # Testing
+                # print("indv_block_width = " + str(self.indv_block_width))
+                # print("indv_block_height = " + str(self.indv_block_height))
+                # print("nested_block_height = " + str(self.nested_block_height))
+                # print("block_minimum_height = " + str(self.block_minimum_height))
+
+                sufficient_space = self.adjust_ad_block(ad_tree)
 
 
-            for subtree_block in subtree_block_list:
-                subtree_block.height = self.block_minimum_height + ( len(subtree_block.belong_subtree.leaf_set) / taxa_cnt * allocatable_space)
+    def adjust_ad_block(self,ad_tree):
+        # Calculate block size in each ad_tree
+        space_required = (15 + ad_tree.padding) if ad_tree.is_nested else (ad_tree.y + ad_tree.padding * self.scale)
+
+        indv_block_list, subtree_block_list,unnested_block_taxa_cnt = ad_tree.individual_subtree_block_list()
+        for indv_block in indv_block_list:
+            indv_block.width = self.indv_block_width
+            indv_block.height = self.indv_block_height
+            space_required += indv_block.height + ad_tree.padding * self.scale
+
+        free_space = 0
+        for index,subtree_block in enumerate(subtree_block_list):
+            if subtree_block.nested_tree:
+                # print("This subtree has nested_tree,nested tree height is ", end="")
+                subtree_block.nested_tree.height = self.adjust_ad_block(subtree_block.nested_tree)
+                # print(subtree_block.nested_tree.height)
+                subtree_block.height = subtree_block.nested_tree.height
+                space_required += subtree_block.height + ad_tree.padding * self.scale
+
+                if index == len(subtree_block_list)-1:
+                    free_space = self.ad_height - space_required
+                    subtree_block.height += free_space
+
+            elif ad_tree.is_nested:
+                subtree_block.height = self.nested_block_height
+                space_required += subtree_block.height + ad_tree.padding * self.scale
+
+            else:
+                # Outer subtree block
+                block_remaining = len(subtree_block_list) - index
+                minimum_height = block_remaining * self.block_minimum_height
+                # print("space_required = " + str(space_required))
+                # print("minimum_height = " + str(minimum_height))
+                # print("This block is outer block,height = ", end="")
+                if (self.ad_height - space_required - block_remaining * ad_tree.padding * self.scale) < minimum_height:
+                    return -minimum_height
+                else:
+                    if free_space == 0:
+                        free_space = self.ad_height - space_required - minimum_height - block_remaining * ad_tree.padding * self.scale
+
+                    subtree_block.height = self.block_minimum_height + (
+                            (subtree_block.taxa_count / unnested_block_taxa_cnt) * free_space)
+
+                    # print(subtree_block.height)
+
+                    space_required += subtree_block.height + ad_tree.padding * self.scale
+
+        if ad_tree.is_nested:
+            return space_required
+
+        return self.ad_height - space_required
+
 
     # Before draw_ad, must confirm these variable has been altered according scale
     # canvas.padding(padding might change when ad_per_row change)
@@ -707,8 +828,17 @@ class tcCanvas(MyCanvas):
                 block = node.node_or_block
 
                 # Calculate block's position and
-                x = ad_tree.topL.x + ad_tree.x  + (ad_tree.x * node.x_level)  # ad_pos + padding
-                y = ad_tree.topL.y + ad_tree.y
+                x = ad_tree.topL.x + (ad_tree.x * self.scale) + (ad_tree.x * node.x_level)  # ad_pos + padding
+
+                if ad_tree.is_nested:
+                    scale_tmp = self.scale
+
+                    if self.scale <= 0.7:
+                        scale_tmp = 0.8
+
+                    y = ad_tree.topL.y + ad_tree.y + (7 * scale_tmp)
+                else:
+                    y = ad_tree.topL.y + ad_tree.y
 
                 block.topL = Point(x, y)
                 block.botR = Point(ad_tree.botR.x - ad_tree.x, y + block.height)
@@ -721,25 +851,17 @@ class tcCanvas(MyCanvas):
                 # self.branch_tail = Point(self.topL.x, self.topL.y + (self.height / 2))
 
                 # Draw block
-                if block.type == INDIVIDUAL_BLOCK:
+                if block.type == INDIVIDUAL_BLOCK or block.type == INDIVIDUAL_LEAF_BLOCK:
                     block.width = DEFAULT_INDV_BLOCK_WIDTH * self.scale
                     if block.topL.x + block.width >= ad_tree.botR.x:
                         block.botR.x = ad_tree.botR.x - 5
                         block.width = block.botR.x - block.topL.x
 
-                    self.draw_frame(block.topL.x, block.topL.y, block.width, block.height,
-                                  GREY,
-                                  layer_index=self.AD_LAYER)
-
-                elif block.type == INDIVIDUAL_LEAF_BLOCK:
-                    block.width = DEFAULT_INDV_BLOCK_WIDTH * self.scale
-                    if block.topL.x + block.width >= ad_tree.botR.x:
-                        block.botR.x = ad_tree.botR.x - 5
-                        block.width = block.botR.x - block.topL.x
+                    color = BLANK if block.type == INDIVIDUAL_BLOCK else block.color
 
                     self.draw_exact_match_block(block.topL.x, block.topL.y, block.width, block.height,
-                                  block_color=block.color,frame_color=GREY,
-                                  layer_index=self.AD_LAYER)
+                                                block_color=color , frame_color=GREY,
+                                                layer_index=self.AD_LAYER)
 
                 elif block.type == SUBTREE_BLOCK:
                     block.width = block.botR.x - block.topL.x
@@ -754,8 +876,12 @@ class tcCanvas(MyCanvas):
                                                     block_color=block.color,frame_color=BLACK,
                                                     layer_index=self.AD_LAYER)
 
-                    self.write_ad_block_label(block)
+                    if block.height > 10:
+                        self.write_ad_block_label(block)
 
+                    if block.nested_tree:
+                        block.nested_tree.set_nested_tree_size(block)
+                        self.draw_ad_tree(ad_tree=block.nested_tree)
 
                 ad_tree.y += block.height + ad_tree.padding
 
@@ -784,19 +910,26 @@ class tcCanvas(MyCanvas):
                 # Draw children's branches
                 for child in node.children:
                     self.draw_solid_line(child.branch_head, child.branch_tail, BLACK, self.AD_LAYER)
+
     def write_ad_block_label(self,block):
         subtree_label = block.belong_subtree.label
         taxa_cnt = str(block.taxa_count)
 
-        label_width = (len(taxa_cnt) * 10) * self.scale
+        label_width = (len(taxa_cnt) * 12) * self.scale
+        scale_tmp = self.scale
 
-        self[self.AD_LAYER].font = f'{13 * self.scale}px Times New Romans'
+        if self.scale <= 0.7:
+            scale_tmp = 0.8
+
+        self[self.AD_LAYER].font = f'{12 * scale_tmp}px Times New Romans'
+
         # Write subtree label on top left corner
         self[self.AD_LAYER].fill_style = BLACK
-        self[self.AD_LAYER].fill_text(subtree_label, block.topL.x + 5, block.topL.y + (12 * self.scale))
+
+        self[self.AD_LAYER].fill_text(subtree_label, block.topL.x + 5,block.topL.y + (12 * scale_tmp))
 
         # Write taxa count on top right corner
-        self[self.AD_LAYER].fill_text(taxa_cnt, block.botR.x - label_width, block.topL.y + (12 * self.scale))
+        self[self.AD_LAYER].fill_text(taxa_cnt, block.botR.x - label_width, block.topL.y + (12 * scale_tmp))
 
     def individual_block(self,subtree,type=INDIVIDUAL_BLOCK):
         #  Default size : 30x7
@@ -831,16 +964,7 @@ class tcCanvas(MyCanvas):
                     break
             self.draw_frame(ad_tree.topL.x,ad_tree.topL.y,ad_tree.width,ad_tree.height,BLACK,self.AD_LAYER)
 
-
-
-
-'''
-Full canvas width = 1100
-AD width = 135
-AD height = 150
-x-gap/y-gap between AD = 20
-'''
-
+    # def nested_tree_height(self,nested_tree):
 
 class Point():
     def __init__(self,x,y):
@@ -885,6 +1009,7 @@ class AD_Block(Block):
         self.color = None
         self.belong_subtree = subtree
         self.belong_ad_tree = ad_tree
+        self.nested_tree = None
 
         self.type = type
         self.width = width

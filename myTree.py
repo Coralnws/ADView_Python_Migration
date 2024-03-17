@@ -130,7 +130,10 @@ class myTree:
             # if not self.ad_individual_canvas or self.parameter_modified():
             if not self.ad_individual_canvas or self.ad_parameter_alter:
                 ad_per_row = (CANVAS_MAX_WIDTH - (3 * DEFAULT_AD_PADDING)) // (DEFAULT_AD_WIDTH * scale)
-                ad_row = math.ceil(len(self.tc) / ad_per_row)
+                if max_ad:
+                    ad_row = math.ceil(max_ad / ad_per_row)
+                else:
+                    ad_row = math.ceil(len(self.tc) / ad_per_row)
                 canvas_height = (ad_row * DEFAULT_AD_HEIGHT * scale) + (2 * DEFAULT_AD_PADDING) + ((ad_row-1) * DEFAULT_AD_PADDING)
                 self.tc_canvas = myCanvas.tcCanvas(tree=self,width=CANVAS_MAX_WIDTH,height=canvas_height,scale=scale,max_ad=max_ad)
 
@@ -258,6 +261,8 @@ class AD_Tree:
         self.tc_tree = tc_tree
         self.block_list = []
         self.tc_canvas = tc_canvas
+        self.nested_cnt = 0
+        self.is_nested = False  # Is/Not nested tree
 
         self.width = DEFAULT_AD_WIDTH  # Default width
         self.height = DEFAULT_AD_HEIGHT  # Default height
@@ -266,25 +271,38 @@ class AD_Tree:
         self.x = 10
         self.y = 10
 
+
     def set_position_size(self,x,y):
         self.topL = myCanvas.Point(x,y)
         self.width = self.tc_canvas.scale * DEFAULT_AD_WIDTH
         self.height = self.tc_canvas.scale * DEFAULT_AD_HEIGHT
         self.botR = myCanvas.Point(x+self.width,y+self.height)
 
+    def set_nested_tree_size(self,nested_block):
+        self.topL = nested_block.topL
+        self.botR = nested_block.botR
+        self.width = self.botR.x - self.topL.x
+
     def plot_tree(self, node=None, level=0):
         if node is None:
             node = self.root
 
         if node.type == ROOT or node.type == INTERNAL:
-            print(' ' * (level * 4) + node.type)
-        else:
+            internaL_node = node.node_or_block
+            print(' ' * (level * 4) + node.type ,end=" ")
+            print(internaL_node)
+
+        elif node.type == LEAF:
             block = node.node_or_block
 
-            if block.belong_subtree:
+            if block.type == SUBTREE_BLOCK:
                 print(' ' * (level * 4) + block.belong_subtree.label + ':' + str(block.taxa_count))
-            else:
-                print(' ' * (level * 4) + block.type)
+            elif block.type == INDIVIDUAL_BLOCK:
+                if block.belong_subtree:
+                    print(' ' * (level * 4) + block.belong_subtree.label + ': INDIVIDUAL LEAF')
+                else:
+                    print(' ' * (level * 4) + 'INDV BLANK BLOCK')
+
 
         for child in node.children:
             self.plot_tree(child, level + 1)
@@ -309,26 +327,41 @@ class AD_Tree:
     def individual_subtree_block_list(self):
         indv_block_list = []
         subtree_block_list = []
+        unnested_block_list = []
+        unnested_block_taxa = 0
 
         for block in self.block_list:
             if block.type == INDIVIDUAL_BLOCK or block.type == INDIVIDUAL_LEAF_BLOCK:
                 indv_block_list.append(block)
             elif block.type == SUBTREE_BLOCK:
-                subtree_block_list.append(block)
+                if block.nested_tree:
+                    subtree_block_list.append(block)
+                else:
+                    unnested_block_list.append(block)
+                    unnested_block_taxa += block.taxa_count
 
-        return indv_block_list,subtree_block_list
+        for block in unnested_block_list:
+            subtree_block_list.append(block)
+
+        return indv_block_list,subtree_block_list,unnested_block_taxa
 
     # Calculate allocatable space for subtree block
     # If has missing taxa, just make changes in this function to reserve space for missing taxa block
     def allocatable_ad_space(self):
         indv_block_list,subtree_block_list = self.individual_subtree_block_list()
         indv_block_cnt = len(indv_block_list)
-        subtree_block_cnt = len(subtree_block_list)
+        subtree_block_cnt = len(subtree_block_list) + self.nested_cnt
+        # print(subtree_block_cnt)
         total_block_cnt = len(self.block_list)
         scale = self.tc_canvas.scale
 
+        if scale < 1.0:
+            self.y = self.y * scale
+            self.x = self.x * scale
+            self.padding = self.padding * scale
+
         block_space = self.height - (2 * self.y) - (2 * self.padding) - (DEFAULT_INDV_BLOCK_HEIGHT * scale * indv_block_cnt) - \
-                      ((total_block_cnt - 1) * self.padding) - (BLOCK_MINIMUM_HEIGHT[subtree_block_cnt % MAX_SUBTREE] * subtree_block_cnt)
+                      ((total_block_cnt-1) * self.padding) - (BLOCK_MINIMUM_HEIGHT[subtree_block_cnt % MAX_SUBTREE] * scale * subtree_block_cnt)
 
         return block_space
 
@@ -338,6 +371,8 @@ class AD_Tree:
 
         for block in subtree_block_list:
             taxa_cnt += block.taxa_count
+            if block.nested_tree:
+                taxa_cnt += block.nested_tree.ad_taxa_total()
 
         return taxa_cnt
 
@@ -356,6 +391,7 @@ class AD_Node:
         self.pos = None
         self.branch_head = None
         self.branch_tail = None
+        self.nested_tree = None # Root of nested tree
 
     def insert_child(self,ad_node):
         self.children.append(ad_node)
