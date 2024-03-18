@@ -268,9 +268,11 @@ class AD_Tree:
         self.height = DEFAULT_AD_HEIGHT  # Default height
         self.topL = None
         self.botR = None
-        self.x = 10
-        self.y = 10
-
+        self.set_default()
+    def set_default(self):
+        self.x = 8
+        self.y = 8
+        self.padding = 5  # Padding between block
 
     def set_position_size(self,x,y):
         self.topL = myCanvas.Point(x,y)
