@@ -19,9 +19,8 @@ MAX_SUBTREE = 5
   # AD , TC_CANVAS
 SUBTREE_ROOT = 0
 INDEPENDENT_LEAF = 1
-ELIDED_BLOCK = 2
-IS_DESCENDANT = 3
-NON_DESCENDANT = 4
+IS_DESCENDANT = 2
+NON_DESCENDANT = 3
 
 
 AD_INDIVIDUAL = "Individual"
@@ -44,6 +43,7 @@ BLOCK_MINIMUM_HEIGHT = [20,20,20,20,15,15]
 NESTED_BLOCK_MINIMUM_HEIGHT = 15
 
 AD_BRANCH_LENGTH = 5
+ELIDED_BRANCH_LENGTH = 10
 
 SPACE_INSUFFICIENT = 'Space insufficient'
 SPACE_SUFFICIENT = 'Space sufficient'
@@ -69,6 +69,7 @@ C = 3
 D = 4
 E = 5
 
-
-def _private_function():
-    print("hi")
+ # Check Condition
+BREAK = 'break'
+CONTINUE = 'continue'
+TRUE = 'True'

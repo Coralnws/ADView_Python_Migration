@@ -123,11 +123,32 @@ class myTree:
         # self.rt_canvas.draw_subtree_block(node)
 
     # Show AD, default: show individual AD
-    def AD(self,view=AD_INDIVIDUAL,scale=1.0,max_ad=None,context_level=2):  # view = "Individual" / "Cluster"
+    def AD(self,view=AD_INDIVIDUAL,scale=1.0,max_ad=None,context_level=2,first_ad=None,last_ad=None,tree_index=None,tree_name=None):  # view = "Individual" / "Cluster"
+        # Check if condition is logical
+        # 1. First_ad < last_ad
+        if first_ad and last_ad:
+            if last_ad < first_ad:
+                self.parameter_error("first_ad/last_ad")
+                return
+        # 2.  First_ad > 0
+        if first_ad and first_ad <= 0:
+            self.parameter_error("first_ad")
+            return
+        # 3. Last_ad > 0
+        if last_ad and last_ad <= 0:
+            self.parameter_error("last_ad")
+            return
+        # 4. tree_index > 0
+        if tree_index and type(tree_index) is not list and tree_index <= 0:
+            self.parameter_error("tree_index")
+            return
+        # 5. context_level >= 1
+        if context_level < 1:
+            self.parameter_error("context_level")
+            return
+
         self.subtree_list = self.rt_canvas.subtree_list
         # Parameter: width, height, context levels, show labels, show colors
-        if context_level < 1:
-            context_level = 1
 
         if view == AD_INDIVIDUAL:
             # if not self.ad_individual_canvas or self.parameter_modified():
@@ -143,7 +164,9 @@ class myTree:
                     ad_row = math.ceil(len(self.tc) / ad_per_row)
 
                 canvas_height = (ad_row * DEFAULT_AD_HEIGHT * scale) + (2 * DEFAULT_AD_PADDING) + ((ad_row-1) * DEFAULT_AD_PADDING)
-                self.tc_canvas = myCanvas.tcCanvas(tree=self,width=CANVAS_MAX_WIDTH,height=canvas_height,scale=scale,max_ad=max_ad,ad_per_row=ad_per_row,context_level=context_level)
+                self.tc_canvas = myCanvas.tcCanvas(tree=self,width=CANVAS_MAX_WIDTH,height=canvas_height,scale=scale,max_ad=max_ad,\
+                                                   ad_per_row=ad_per_row,context_level=context_level,first_ad=first_ad,last_ad=last_ad,\
+                                                   tree_index=tree_index,tree_name=tree_name)
 
                 return self.tc_canvas
 
@@ -222,6 +245,10 @@ class myTree:
     def rt_not_exist_error(self):
         print("<Error> : Reference Tree not exist.")
         print("Please ensure that you have called the reference_tree() function before calling this function.")
+
+    def parameter_error(self,parameter):
+        print(f"<Error> : {parameter} given was incorrect.")
+        print("Please ensure that the information provided is logical.")
 
 class Subtree:
     # rt = None  # Belong to which reference tree
@@ -338,6 +365,7 @@ class AD_Tree:
             node = self.root
             node_list=[]
 
+        node.children = sorted(node.children, key=lambda x: x.child_index,reverse=False)
         for child in node.children:
             node_list = self.traverse_postorder(child,node_list)
 
@@ -415,7 +443,7 @@ class AD_Tree:
         pass
 
 class AD_Node:
-    def __init__(self,node_or_block,x_level,type):
+    def __init__(self,node_or_block,x_level,type,child_index):
         self.node_or_block = node_or_block  # Dendropy node if internal node, AD_Block if leaf
         self.children = []
         self.x_level = x_level
@@ -424,6 +452,8 @@ class AD_Node:
         self.branch_head = None
         self.branch_tail = None
         self.nested_tree = None # Root of nested tree
+        self.is_elided = False
+        self.child_index = child_index
 
     def insert_child(self,ad_node):
         self.children.append(ad_node)
@@ -432,6 +462,9 @@ class AD_Node:
         self.branch_head = myCanvas.Point(x - (AD_BRANCH_LENGTH * scale),y)
         self.branch_tail = myCanvas.Point(x ,y)
 
+    def construct_elided_branch(self,x,y,scale):
+        self.branch_head = myCanvas.Point(x - (ELIDED_BRANCH_LENGTH * scale),y)
+        self.branch_tail = myCanvas.Point(x ,y)
 
     # Standardize the starting x-coordinate of all children's branches
     def unify_children_branches(self,x):
