@@ -147,7 +147,7 @@ class AD_Py:
     # Show AD, default: show individual AD
     def AD(self,view=AD_INDIVIDUAL,scale=1.0,max_ad=None,context_level=2,ad_index_interval=[],tree_id=None,
            tree_label=None,filter=INCLUDE,sort=ID,ignore_independent_leaf=True,show_block_proportional=True,
-           subtree_independent=False,parameter_from_individual_ad=False):  # view = "Individual" / "Cluster"
+           subtree_independent=False,parameter_from_individual_ad=False,differentiate_inexact_match=True):  # view = "Individual" / "Cluster"
 
         first_ad = None
         last_ad = None
@@ -216,7 +216,8 @@ class AD_Py:
                                                            show_block_proportional=show_block_proportional,
                                                            subtree_independent=subtree_independent,
                                                            parameter_from_individual_ad=parameter_from_individual_ad,
-                                                           ignore_independent_leaf=ignore_independent_leaf)
+                                                           ignore_independent_leaf=ignore_independent_leaf,
+                                                           differentiate_inexact_match=differentiate_inexact_match)
 
                 return self.ad_cluster_canvas
 
@@ -493,41 +494,63 @@ class AD_Tree:
 
         return taxa_cnt
 
-    def ad_to_string(self, node=None, ignore_independant_leaf=False):
+    def ad_to_string(self, canvas,node=None, differentiate_inexact_match=True):
 
         if node == None:
             node = self.root
             newick_str = ""
 
         if node.type == LEAF:
-            return self.get_node_type(node)
+            return self.get_node_type(canvas,node,differentiate_inexact_match=differentiate_inexact_match)
         else:
             newick_str = ""
             sorted_children = sorted(node.children, key=lambda x: x.type_prior, reverse=False)
             for child in sorted_children:
                 nested_tree_string = ""
                 if child.nested_tree:
-                    nested_tree_string = child.nested_tree.ad_to_string()
-                    newick_str += self.ad_to_string(child) + '[' + nested_tree_string + '],'
+                    nested_tree_string = child.nested_tree.ad_to_string(canvas=canvas,
+                                                                        differentiate_inexact_match=differentiate_inexact_match)
+                    newick_str += self.ad_to_string(canvas=canvas,node=child,
+                                                    differentiate_inexact_match=differentiate_inexact_match) + '[' + nested_tree_string + '],'
                 else:
-                    newick_str += self.ad_to_string(child) + ','
+                    newick_str += self.ad_to_string(canvas=canvas,node=child,
+                                                    differentiate_inexact_match=differentiate_inexact_match) + ','
 
             if node.type == ROOT:
-                return '(' + newick_str[:-1] + ')' + self.get_node_type(node) + ';'
+                return '(' + newick_str[:-1] + ')' + self.get_node_type(canvas,node,differentiate_inexact_match=differentiate_inexact_match) + ';'
             else:
-                return '(' + newick_str[:-1] + ')' + self.get_node_type(node)
+                return '(' + newick_str[:-1] + ')' + self.get_node_type(canvas,node,differentiate_inexact_match=differentiate_inexact_match)
 
-    def get_node_type(self, node):
+    def get_node_type(self, canvas,node,differentiate_inexact_match=True):
         if node.type == LEAF:
             block = node.node_or_block
             if block.type == SUBTREE_BLOCK:
                 subtree_label = ""
                 if block.is_subtree_duplicate:
-                    for subtree in block.belong_subtree:
-                        subtree_label += subtree.label + '&'
+                    for index,subtree in enumerate(block.belong_subtree):
+                        str = ""
+                        if differentiate_inexact_match:
+                            if block.exact_match[index]:
+                                str = "[exact]"
+                            else:
+                                str = "[inexact]"
+                        elif not block.exact_match[index]:
+                            canvas.has_inexact = True
+
+
+                        subtree_label += str + subtree.label + '&'
                     return subtree_label[:-1]
                 else:
-                    return block.belong_subtree.label
+                    str = ""
+                    if differentiate_inexact_match:
+                        if block.exact_match:
+                            str = "[exact]"
+                        else:
+                            str = "[inexact]"
+                    elif not block.exact_match:
+                        canvas.has_inexact = True
+                        
+                    return str + block.belong_subtree.label
             elif block.type == INDIVIDUAL_LEAF_BLOCK:
                 return block.belong_subtree.label + "_INDEPENDENT"
             elif block.type == INDIVIDUAL_BLOCK:

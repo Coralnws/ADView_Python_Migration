@@ -14,7 +14,7 @@ class tcCanvas(MyCanvas):
     def __init__(self,ad_Py,view,ad_per_row=DEFAULT_AD_PER_ROW,width=1100, height=1100,scale=1.0,max_ad=None,
                  context_level=2,first_ad=None,last_ad=None,tree_id=None,tree_label=None,sort_by=ID,
                  ignore_independent_leaf=False,show_block_proportional=False,parameter_from_individual_ad=True,
-                 subtree_independent=True):
+                 subtree_independent=True,differentiate_inexact_match=True):
         super().__init__(5, width = width, height = height)
         self.ad_list = []
         self.scale = scale
@@ -34,6 +34,7 @@ class tcCanvas(MyCanvas):
         self.show_block_proportional = show_block_proportional # True if colored segment width proportional with block width
         self.parameter_from_individual_ad=parameter_from_individual_ad # Set parameter of cluster ad same as individual ad canvas
         self.subtree_independent = subtree_independent
+        self.differentiate_inexact_match = differentiate_inexact_match
         # Subtree_independent : Show details of nested subtree when both subtree corresponding branch is same
 
         # Initialization
@@ -892,7 +893,7 @@ class tcCanvas(MyCanvas):
 
         self[self.AD_LAYER].fill_text(subtree_label, block.topL.x + 5,block.topL.y + (12 * scale_tmp))
 
-        if block.width > 28:
+        if block.width > 28 and not self.view == AD_CLUSTER :
             # Write taxa count on top right corner
             self[self.AD_LAYER].fill_text(taxa_cnt, block.botR.x - label_width, block.topL.y + (12 * scale_tmp))
 
@@ -913,6 +914,7 @@ class tcCanvas(MyCanvas):
     #------------------- Cluster ad view ----------------------#
 
     def cluster_ad(self):
+
         # 1.rt ad
         # 2.all ad_to_newick
         #   - compare with existing newick and record has how many different newick, as well as record this cluster has how many tree and tree_list, and see whether this cluster is cluster of rt as well
@@ -950,9 +952,12 @@ class tcCanvas(MyCanvas):
         # Convert rt_ad to string
         # Convert ad_tree to string and save as AD_Topology
         for ad_tree in self.ad_list:
-            ad_string = ad_tree.ad_to_string()
+            self.has_inexact = False
+            ad_string = ad_tree.ad_to_string(self,differentiate_inexact_match=self.differentiate_inexact_match)
             topology_exist = self.check_topology_exist(ad_string)
             if topology_exist:
+                if self.has_inexact:
+                    topology_exist.sample_ad_tree = ad_tree
                 topology_exist.add_ad(ad_tree)
             else:
                 new_topology = AD_Topology(ad_string=ad_string,sample_ad_tree=ad_tree)
