@@ -1,10 +1,11 @@
 # CONSTANT
-  # Tree
+
+# Tree
 ROOT = 'Root'
 LEAF = 'Leaf'
 INTERNAL = 'Internal Node'
 
-  # RT_Canvas
+# RT_Canvas
 RT_NODE_COLOR = '#F38D76'
 RT_X_INTERVAL = 10
 RT_Y_INTERVAL = 20
@@ -16,38 +17,66 @@ CANVAS_MAX_WIDTH = 1100
 LABEL_MAX_WIDTH = 55
 MAX_SUBTREE = 5
 
-  # AD , TC_CANVAS
+# AD , TC_CANVAS
+
+# Check Relations
 SUBTREE_ROOT = 0
-INDEPENDENT_LEAF = 1
-IS_DESCENDANT = 2
-NON_DESCENDANT = 3
+DUPLICATE_SUBTREE_ROOT = 1
+INDEPENDENT_LEAF = 2
+IS_DESCENDANT = 3
+NON_DESCENDANT = 4
 
-
+# TC_CANVAS TYPE
 AD_INDIVIDUAL = "Individual"
 AD_CLUSTER = "Cluster"
 
-INDIVIDUAL_BLOCK = 'Individual ad block'
-SUBTREE_BLOCK = 'Subtree ad block'
-INDIVIDUAL_LEAF_BLOCK = 'Individual leaf block'
+# Type of AD_BLOCK
+INDIVIDUAL_BLOCK = 'Individual_blank_block'
+SUBTREE_BLOCK = 'Subtree_ad_block'
+INDIVIDUAL_LEAF_BLOCK = 'Individual_leaf_block'
 
-RELATION_PRIOR = [SUBTREE_ROOT,IS_DESCENDANT,INDEPENDENT_LEAF,NON_DESCENDANT]
-
-
+# Size,padding, etc
 DEFAULT_INDV_BLOCK_WIDTH = 30
 DEFAULT_INDV_BLOCK_HEIGHT = 7
-DEFAULT_AD_PADDING = 20
+DEFAULT_PADDING_BETWEEN_AD = 20
 DEFAULT_AD_PER_ROW = 7
 DEFAULT_AD_WIDTH = 135  # Default width
 DEFAULT_AD_HEIGHT = 150
+DEFAULT_PADDING_BETWEEN_BLOCK = 5
+
 BLOCK_MINIMUM_HEIGHT = [20,20,20,20,15,15]
 NESTED_BLOCK_MINIMUM_HEIGHT = 15
 
 AD_BRANCH_LENGTH = 5
 ELIDED_BRANCH_LENGTH = 10
 
+CLUSTER_NUMBER_BAR_HEIGHT = 15
+
+
+# REC sice
+UP = 'upper side'
+DOWN = 'down side'
+MIDDLE = 'middle'
+
+# Check display area
 SPACE_INSUFFICIENT = 'Space insufficient'
 SPACE_SUFFICIENT = 'Space sufficient'
 
+ # Check Condition 
+BREAK = 'break'
+CONTINUE = 'continue'
+TRUE = 'True'
+FULFILL = 'Fulfill'
+
+# Filter
+INCLUDE = 'include'
+EXCLUDE = 'exclude'
+
+# Sort AD
+ID = 'id'
+RF_DISTANCE = 'rf_distance'
+SIMILARITY = 'similarity'
+NAME = 'name'
 
   # COLOR
 BLANK = '#FFFFFF'
@@ -61,6 +90,8 @@ BEIGE = '#F8DAAB'
 BLACK = '#000000'
 ORANGE = '#E8A553'
 GREY = '#ABABAB'
+LIGHT_GREY = '#BFBFBF'
+
 
   # Subtree label
 A = 1
@@ -69,7 +100,3 @@ C = 3
 D = 4
 E = 5
 
- # Check Condition
-BREAK = 'break'
-CONTINUE = 'continue'
-TRUE = 'True'
