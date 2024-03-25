@@ -2,3 +2,5 @@ dendropy
 ipycanvas
 ipywidgets
 quads
+scikit-learn
+numpy

@@ -10,6 +10,7 @@ class MyCanvas(MultiCanvas):
 
     def __init__(self,layer,width, height):
         super().__init__(layer,width = width, height = height)
+        self.layer = layer
 
     def draw_dots(self,x,y,layer_index = -1):
         self[layer_index].fill_style = RED
@@ -95,6 +96,7 @@ class AD_Block(Block):
         self.taxa_list = set()
         self.subtree_taxa_count = 0   # subtree_taxa in block
         self.duplicate_subtree_taxa_count = []  # taxa_count of each subtree in same block
+        self.exact_match = None
         self.color = None
         self.belong_subtree = subtree
         self.belong_ad_tree = ad_tree

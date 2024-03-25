@@ -1,12 +1,21 @@
+import copy
+
 import dendropy
 from Utils import *
+from ipycanvas import Canvas
+from IPython.display import display
 import os
+import myCanvas as myCanvas
 import rtCanvas as rtCanvas
 import tcCanvas as tcCanvas
 import importlib
 importlib.reload(rtCanvas)
 importlib.reload(tcCanvas)
 import math
+import numpy as np
+import plotly.express as px
+from sklearn.manifold import MDS
+
 
 class AD_Py:
     def __init__(self,treefile = None,type="newick"):
@@ -19,13 +28,15 @@ class AD_Py:
         self.rt_alter = False
         self.rt_file = treefile
         self.tree_schema = type
+        self.tree_distance_matrix = None
 
         # AD/Tree collection related
         self.tc = []  # Tree Collection
         self.tc_taxa = []
         self.ad_individual_canvas = None # Individual ADs' Canvas
         self.ad_cluster_canvas = None # Cluster ADs' Canvas
-        self.ad_parameters = {}   # { 'parameter_name' : value }
+        self.individual_canvas_parameters = {}   # { 'parameter_name' : value }
+        self.cluster_canvas_parameters = {}
         self.ad_parameter_alter = True # Record whether ad_canvas's parameter change
 
         # Reaf tree file and construct reference tree
@@ -59,6 +70,9 @@ class AD_Py:
 
             self.corresponding_branches()
 
+            if self.tree_distance_matrix:
+                self.generate_tree_distance_matrix()
+
         self.rt_alter = True
 
     def add_tree_collection(self,treefile=None,type="newick",namefile=None):
@@ -74,9 +88,6 @@ class AD_Py:
             tree.encode_bipartitions()
             tree.taxa_list = [leaf.taxon.label for leaf in tree.leaf_nodes()]
             tree.missing = set(self.rt.taxa_list) - set(tree.taxa_list)
-            tree.rf_distance = dendropy.calculate.treecompare.symmetric_difference(self.rt, tree)
-
-
             if namefile:
                 tree_name = file.readline().strip()
                 tree.name = tree_name
@@ -85,6 +96,10 @@ class AD_Py:
                 mrca = tree.mrca(taxon_labels=self.outgroup)
                 tree.reroot_at_edge(mrca.edge)
 
+            tree.rf_distance = dendropy.calculate.treecompare.symmetric_difference(self.rt, tree)
+
+        self.generate_tree_distance_matrix()
+        self.rt_alter = True
         self.corresponding_branches()
         
     def tree_collection(self,sort_by=ID):
@@ -145,29 +160,30 @@ class AD_Py:
         # self.rt_canvas.draw_subtree_block(node)
 
     # Show AD, default: show individual AD
-    def AD(self,view=AD_INDIVIDUAL,scale=1.0,max_ad=None,context_level=2,ad_index_interval=[],tree_id=None,
-           tree_label=None,filter=INCLUDE,sort=ID,ignore_independent_leaf=True,show_block_proportional=True,
-           subtree_independent=False,parameter_from_individual_ad=False,differentiate_inexact_match=True):  # view = "Individual" / "Cluster"
+    def AD(self,view=AD_INDIVIDUAL,scale=1.0,max_ad=None,context_level=2,ad_interval=[],tree_id=None,
+           tree_name=None,filter=INCLUDE,sort=RF_DISTANCE,ignore_independent_leaf=True,show_block_proportional=True,
+           subtree_independent=False,parameter_from_individual_ad=True,differentiate_inexact_match=True,
+           show_tree_name=False):
 
         first_ad = None
         last_ad = None
-        if len(ad_index_interval) > 0:
-            first_ad = ad_index_interval[0]
-            last_ad = ad_index_interval[1]
+        if len(ad_interval) > 0:
+            first_ad = ad_interval[0]
+            last_ad = ad_interval[1]
 
         # Check if condition is logical
         # 1. First_ad < last_ad
         if first_ad and last_ad:
             if last_ad < first_ad:
-                self.parameter_error("first_ad/last_ad")
+                self.parameter_error("ad_interval")
                 return
         # 2.  First_ad > 0
         if first_ad and first_ad <= 0:
-            self.parameter_error("first_ad")
+            self.parameter_error("ad_interval")
             return
         # 3. Last_ad > 0
         if last_ad and last_ad <= 0:
-            self.parameter_error("last_ad")
+            self.parameter_error("ad_interval")
             return
         # 4. tree_id > 0
         if tree_id and type(tree_id) is not list and tree_id <= 0:
@@ -185,7 +201,6 @@ class AD_Py:
         else:
             ad_per_row = DEFAULT_AD_PER_ROW
 
-
         if view == AD_INDIVIDUAL:
             # if not self.ad_individual_canvas or self.parameter_modified():
             if not self.ad_individual_canvas or self.ad_parameter_alter:
@@ -196,15 +211,20 @@ class AD_Py:
 
                 canvas_height = (ad_row * DEFAULT_AD_HEIGHT * scale) + (2 * DEFAULT_PADDING_BETWEEN_AD) +  ((ad_row -
                                                                                                              1) * DEFAULT_PADDING_BETWEEN_AD)
-                self.ad_individual_canvas = tcCanvas.tcCanvas(ad_Py=self,view=view,width=CANVAS_MAX_WIDTH,
+                self.ad_individual_canvas = tcCanvas.tcCanvas(layer = ad_row,ad_Py=self,view=view,
+                                                              width=CANVAS_MAX_WIDTH,
                                                               height=canvas_height, scale=scale,max_ad=max_ad,
                                                               ad_per_row=ad_per_row, context_level=context_level,
                                                               first_ad=first_ad, last_ad=last_ad,tree_id=tree_id,
-                                                              tree_label=tree_label, sort_by=sort,
+                                                              tree_name=tree_name, sort_by=sort,
                                                               ignore_independent_leaf=ignore_independent_leaf,
                                                               show_block_proportional=show_block_proportional,
-                                                              subtree_independent=subtree_independent)
-
+                                                              subtree_independent=subtree_independent,show_tree_name=show_tree_name)
+                display(self.ad_individual_canvas)
+                # for layer in range(0, self.ad_individual_canvas.layer):
+                for index, ad_tree in enumerate(self.ad_individual_canvas.ad_list):
+                    self.ad_individual_canvas.draw_ad_tree(ad_tree)
+                    self.ad_individual_canvas[ad_tree.located_layer].flush()
                 return self.ad_individual_canvas
 
         # Parameter: differentiate inexact match, differentiate sister-group relationships
@@ -221,20 +241,72 @@ class AD_Py:
 
                 return self.ad_cluster_canvas
 
-    #### Internal Functions ####
+    def tree_distance(self):
+        mds = MDS(n_components=2, dissimilarity='precomputed',random_state=42)
+        mds_fit = mds.fit(self.tree_distance_matrix)
+        self.tree_point_coordinates = mds .fit_transform(self.tree_distance_matrix)
+        self.tree_point_coordinates -= self.tree_point_coordinates.min(axis=0)
+        self.x_coor = []
+        self.y_coor = []
+        for coordinate in self.tree_point_coordinates:
+            self.x_coor.append(coordinate[0])
+            self.y_coor.append(coordinate[1])
+
+        id_name = [f"0 : {self.rt.name}"]
+        for tc_tree in self.tc:
+            id_name.append(f"{tc_tree.id} : {tc_tree.name}")
+
+        color = ['Reference Tree']
+        for i in range(len(self.tree_point_coordinates)-1):
+            color.append('Tree Collection')
+
+        fig = px.scatter(x=self.x_coor, y=self.y_coor, color=color,
+                         title='Tree Distance')
+
+        # Customize hover template
+        fig.update_traces(hovertemplate='%{text}',text=id_name, hoverinfo='text')
+        # Remove legend labels
+        fig.update_layout(dragmode=False,showlegend=False,width=600, height=600,plot_bgcolor=TREE_NAME_BG,xaxis=dict(
+            color=BLACK),yaxis=dict(color=BLACK))
+
+        # fig = px.scatter(x=self.tree_point_coordinates[:, 0], y=self.tree_point_coordinates[:, 1], color=color,
+        #                  title='Tree Distance')
+        # fig.update_layout(showlegend=False)
+        # fig.update_traces(text=id_name, hoverinfo='text', hovertemplate='%{text}')
+
+
+        fig.show()
+
+        #### Internal Functions ####
     def read_rt(self,treefile,type):
         self.rt = dendropy.Tree.get(path=treefile, schema=type)
 
         # Filename as tree name
         rt_label = os.path.basename(treefile)
         self.rt.id = 0
-        self.rt.label = rt_label
+        self.rt.name = rt_label
 
         # Get tree's taxa/leaf node
         self.rt.taxa_list = [leaf.taxon.label for leaf in self.rt.leaf_nodes()]
 
-    def get_tc(self):
-        return self.tc
+    def generate_tree_distance_matrix(self):
+        dimension = len(self.tc) + 1
+        self.tree_distance_matrix = np.zeros((dimension, dimension))
+
+
+        for index,tree in enumerate(self.tc):
+            self.tree_distance_matrix[0,index + 1] = tree.rf_distance if tree.rf_distance != 0 else 1
+
+        for i in range(0,len(self.tc)):
+            tree_compare = self.tc[i]
+            for j in range(i+1,len(self.tc)):
+                self.tree_distance_matrix[i + 1, j + 1] = dendropy.calculate.treecompare.symmetric_difference(
+                    tree_compare,self.tc[j])
+                if self.tree_distance_matrix[i + 1, j + 1] == 0:
+                    self.tree_distance_matrix[i + 1, j + 1] = 1
+
+
+        self.tree_distance_matrix = np.triu(self.tree_distance_matrix) + np.triu(self.tree_distance_matrix, k=1).T
 
     def corresponding_branches(self):
         if self.tc == None:
@@ -298,15 +370,6 @@ class AD_Py:
         print("Please ensure that the information provided is logical.")
 
 
-import dendropy
-from Utils import *
-import os
-import myCanvas as myCanvas
-import importlib
-importlib.reload(myCanvas)
-import math
-
-
 class Subtree:
     # rt = None  # Belong to which reference tree
     # label = None  # A,B,C,D,E
@@ -360,9 +423,12 @@ class AD_Tree:
         self.height = DEFAULT_AD_HEIGHT  # Default height
         self.topL = None
         self.botR = None
+        self.index_in_row = 0
         self.set_default()
-        self.block_id = 0
         self.space_required = 0
+
+        self.located_layer = 0
+        self.tree_name_block = None
 
     def set_default(self):
         self.x = 8
@@ -393,7 +459,7 @@ class AD_Tree:
             block = node.node_or_block
 
             if block.type == SUBTREE_BLOCK:
-                print(' ' * (level * 4) + block.belong_subtree.label + ':' + str(block.taxa_count))
+                print(' ' * (level * 4) + block.belong_subtree.label + ':' + str(block.subtree_taxa_count))
             elif block.type == INDIVIDUAL_BLOCK:
                 if block.belong_subtree:
                     print(' ' * (level * 4) + block.belong_subtree.label + ': INDIVIDUAL LEAF')
@@ -452,36 +518,12 @@ class AD_Tree:
 
         return indv_block_list, subtree_block_list, unnested_block_taxa
 
-    # def get_subtree_block_list(self,order=BY_LEVEL):
-    #     block_list = []
-    #     if order == BY_LEVEL:
-    #         for block in self.block_list:
-    #             if block.type == SUBTREE_BLOCK or block.type == INDIVIDUAL_LEAF_BLOCK:
-    #                 block_list.append(block)
-    #
-    #     return sorted(block_list, key=lambda x: x.x_level,reverse=False)
-
-    # Calculate allocatable space for subtree block
-    # If has missing taxa, just make changes in this function to reserve space for missing taxa block
-    def allocatable_ad_space(self):
-        indv_block_list, subtree_block_list = self.individual_subtree_block_list()
-        indv_block_cnt = len(indv_block_list)
-        subtree_block_cnt = len(subtree_block_list) + self.nested_cnt
-        # print(subtree_block_cnt)
-        total_block_cnt = len(self.block_list)
-        scale = self.tc_canvas.scale
-
-        if scale < 1.0:
-            self.y = self.y * scale
-            self.x = self.x * scale
-            self.padding = self.padding * scale
-
-        block_space = self.height - (2 * self.y) - (2 * self.padding) - (
-                    DEFAULT_INDV_BLOCK_HEIGHT * scale * indv_block_cnt) - \
-                      ((total_block_cnt - 1) * self.padding) - (
-                                  BLOCK_MINIMUM_HEIGHT[subtree_block_cnt % MAX_SUBTREE] * scale * subtree_block_cnt)
-
-        return block_space
+    def get_all_subtree_block_list(self,subtree_block_list):
+        for block in self.block_list:
+            if block.type == SUBTREE_BLOCK:
+                subtree_block_list.append(block)
+                if block.nested_tree:
+                    block.nested_tree.get_all_subtree_block_list(subtree_block_list)
 
     def ad_taxa_total(self):
         indv_block_list, subtree_block_list = self.individual_subtree_block_list()
@@ -521,6 +563,9 @@ class AD_Tree:
             else:
                 return '(' + newick_str[:-1] + ')' + self.get_node_type(canvas,node,differentiate_inexact_match=differentiate_inexact_match)
 
+
+
+
     def get_node_type(self, canvas,node,differentiate_inexact_match=True):
         if node.type == LEAF:
             block = node.node_or_block
@@ -535,8 +580,7 @@ class AD_Tree:
                             else:
                                 str = "[inexact]"
                         elif not block.exact_match[index]:
-                            canvas.has_inexact = True
-
+                            canvas.inexact_block.append(subtree.label)
 
                         subtree_label += str + subtree.label + '&'
                     return subtree_label[:-1]
@@ -548,7 +592,7 @@ class AD_Tree:
                         else:
                             str = "[inexact]"
                     elif not block.exact_match:
-                        canvas.has_inexact = True
+                        canvas.inexact_block.append(block.belong_subtree.label)
                         
                     return str + block.belong_subtree.label
             elif block.type == INDIVIDUAL_LEAF_BLOCK:
@@ -560,10 +604,6 @@ class AD_Tree:
             return node.type
         else:
             return ""
-
-    def compare_topology(self):
-        pass
-
 
 class AD_Node:
     def __init__(self, node_or_block, x_level, type, child_index, type_prior):
@@ -602,11 +642,25 @@ class AD_Topology:
         self.sample_ad_tree = sample_ad_tree
         self.ad_tree_list = []
         self.tree_count = 1
+        self.block_list = []
+        self.generate_block_list()
 
     def add_ad(self, ad_tree):
         self.ad_tree_list.append(ad_tree)
         self.tree_count += 1
 
+    def generate_block_list(self):
+        self.sample_ad_tree.get_all_subtree_block_list(self.block_list)
+
+    def set_block_inexact_match(self,subtree_label):
+        for block in self.block_list:
+            if block.is_subtree_duplicate:
+                for index,subtree in enumerate(block.belong_subtree):
+                    if subtree_label == subtree.label:
+                        block.exact_match[index] = False
+            else:
+                if subtree_label == block.belong_subtree.label:
+                    block.exact_match = False
 
 def print_tree(tree):
     print(tree.as_ascii_plot())
