@@ -15,6 +15,7 @@ import math
 import numpy as np
 import plotly.express as px
 from sklearn.manifold import MDS
+import matplotlib.pyplot as plt
 
 
 class AD_Py:
@@ -85,7 +86,6 @@ class AD_Py:
         for index,tree in enumerate(self.tc):
             # Set trees' index, taxa_list, missing taxa, name and outgroup
             tree.id = index + 1
-            tree.encode_bipartitions()
             tree.taxa_list = [leaf.taxon.label for leaf in tree.leaf_nodes()]
             tree.missing = set(self.rt.taxa_list) - set(tree.taxa_list)
             if namefile:
@@ -144,7 +144,7 @@ class AD_Py:
             self.rt_canvas.draw_subtree_block(subtree_root)
 
     # Same effect as click on the leaf_node
-    def select_leaf_node(self, node=None):
+    def select_taxa(self, node=None):
         if not self.rt_canvas:
             self.rt_not_exist_error()
             return
@@ -161,7 +161,7 @@ class AD_Py:
 
     # Show AD, default: show individual AD
     def AD(self,view=AD_INDIVIDUAL,scale=1.0,max_ad=None,context_level=2,ad_interval=[],tree_id=None,
-           tree_name=None,filter=INCLUDE,sort=RF_DISTANCE,ignore_independent_leaf=True,show_block_proportional=True,
+           tree_name=None,filter=INCLUDE,sort=RF_DISTANCE,espace_taxa_as_context_block=True,show_block_proportional=True,
            subtree_independent=False,parameter_from_individual_ad=True,differentiate_inexact_match=True,
            show_tree_name=False):
 
@@ -197,7 +197,10 @@ class AD_Py:
         self.subtree_list = self.rt_canvas.subtree_list
         # Parameter: width, height, context levels, show labels, show colors
         if scale != 1.0:
-            ad_per_row = (CANVAS_MAX_WIDTH - (3 * DEFAULT_PADDING_BETWEEN_AD)) // (DEFAULT_AD_WIDTH * scale)
+            if scale < 0.5:
+                ad_per_row = (CANVAS_MAX_WIDTH - (3 * DEFAULT_PADDING_BETWEEN_AD)) // (DEFAULT_AD_WIDTH * 0.5)
+            else:
+                ad_per_row = (CANVAS_MAX_WIDTH - (3 * DEFAULT_PADDING_BETWEEN_AD)) // (DEFAULT_AD_WIDTH * scale)
         else:
             ad_per_row = DEFAULT_AD_PER_ROW
 
@@ -217,7 +220,7 @@ class AD_Py:
                                                               ad_per_row=ad_per_row, context_level=context_level,
                                                               first_ad=first_ad, last_ad=last_ad,tree_id=tree_id,
                                                               tree_name=tree_name, sort_by=sort,
-                                                              ignore_independent_leaf=ignore_independent_leaf,
+                                                              espace_taxa_as_context_block=espace_taxa_as_context_block,
                                                               show_block_proportional=show_block_proportional,
                                                               subtree_independent=subtree_independent,show_tree_name=show_tree_name)
                 display(self.ad_individual_canvas)
@@ -225,7 +228,8 @@ class AD_Py:
                 for index, ad_tree in enumerate(self.ad_individual_canvas.ad_list):
                     self.ad_individual_canvas.draw_ad_tree(ad_tree)
                     self.ad_individual_canvas[ad_tree.located_layer].flush()
-                return self.ad_individual_canvas
+
+                # return self.ad_individual_canvas
 
         # Parameter: differentiate inexact match, differentiate sister-group relationships
         elif view == AD_CLUSTER:
@@ -236,16 +240,20 @@ class AD_Py:
                                                            show_block_proportional=show_block_proportional,
                                                            subtree_independent=subtree_independent,
                                                            parameter_from_individual_ad=parameter_from_individual_ad,
-                                                           ignore_independent_leaf=ignore_independent_leaf,
+                                                           espace_taxa_as_context_block=espace_taxa_as_context_block,
                                                            differentiate_inexact_match=differentiate_inexact_match)
 
                 return self.ad_cluster_canvas
 
     def tree_distance(self):
+        # self.tree_distance_matrix = np.random.rand(69, 69)
+        # self.tree_distance_matrix = (self.tree_distance_matrix + self.tree_distance_matrix.T) / 2
+        # np.fill_diagonal(self.tree_distance_matrix, 0)
+
         mds = MDS(n_components=2, dissimilarity='precomputed',random_state=42)
-        mds_fit = mds.fit(self.tree_distance_matrix)
-        self.tree_point_coordinates = mds .fit_transform(self.tree_distance_matrix)
-        self.tree_point_coordinates -= self.tree_point_coordinates.min(axis=0)
+        self.tree_point_coordinates = mds.fit_transform(self.tree_distance_matrix)
+        # self.tree_point_coordinates -= self.tree_point_coordinates.min(axis=0)
+
         self.x_coor = []
         self.y_coor = []
         for coordinate in self.tree_point_coordinates:
@@ -277,6 +285,18 @@ class AD_Py:
 
         fig.show()
 
+    def remove_taxa(self,tree,taxa_list=None):
+        remove_taxa_list = []
+        for i in range(10,len(self.rt.taxa_list)-1):
+            taxa_list = (self.rt.taxa_list[i])
+
+        # Iterate over the tree and remove the specified taxa
+        for taxon_label in remove_taxa_list:
+            self.rt.prune_taxa_with_labels(taxon_label)
+
+        # Save the modified tree to a new file
+        tree.write(path="modified_tree_file.tre", schema="newick")
+
         #### Internal Functions ####
     def read_rt(self,treefile,type):
         self.rt = dendropy.Tree.get(path=treefile, schema=type)
@@ -293,18 +313,17 @@ class AD_Py:
         dimension = len(self.tc) + 1
         self.tree_distance_matrix = np.zeros((dimension, dimension))
 
-
         for index,tree in enumerate(self.tc):
-            self.tree_distance_matrix[0,index + 1] = tree.rf_distance if tree.rf_distance != 0 else 1
+            self.tree_distance_matrix[0,index + 1] = tree.rf_distance
 
         for i in range(0,len(self.tc)):
             tree_compare = self.tc[i]
+            # print("Compare with tree " + str(i))
             for j in range(i+1,len(self.tc)):
-                self.tree_distance_matrix[i + 1, j + 1] = dendropy.calculate.treecompare.symmetric_difference(
-                    tree_compare,self.tc[j])
-                if self.tree_distance_matrix[i + 1, j + 1] == 0:
-                    self.tree_distance_matrix[i + 1, j + 1] = 1
-
+                # print(" " * 5 + "Tree " + str(j))
+                distance = dendropy.calculate.treecompare.symmetric_difference(tree_compare,self.tc[j])
+                self.tree_distance_matrix[i + 1, j + 1] = distance / 1.11
+                # print(f"[{i+1},{j+1}] = " + str(distance))
 
         self.tree_distance_matrix = np.triu(self.tree_distance_matrix) + np.triu(self.tree_distance_matrix, k=1).T
 
