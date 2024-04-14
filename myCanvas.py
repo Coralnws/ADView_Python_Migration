@@ -1,5 +1,5 @@
 from ipycanvas import Canvas,MultiCanvas
-import AD_Py as myTree
+import ADpy as myTree
 from Utils import *
 import math
 
@@ -25,7 +25,6 @@ class MyCanvas(MultiCanvas):
         self[layer_index].stroke()
 
     def draw_dotted_line(self,head,tail,color,line_dash_index=0,layer_index = -1):
-
         self[layer_index].stroke_style = color
         self[layer_index].set_line_dash(self.line_dashes[line_dash_index])
         self[layer_index].begin_path()
@@ -44,6 +43,12 @@ class MyCanvas(MultiCanvas):
         self[layer_index].stroke_style = color
         self[layer_index].stroke_rect(x, y, width, height)
 
+    def draw_dotted_frame(self,x,y,width,height,color,line_dash_index=0,layer_index = -1):
+        self[layer_index].stroke_style = color
+        self[layer_index].set_line_dash(self.line_dashes[line_dash_index])
+        self[layer_index].stroke_rect(x, y, width, height)
+
+        self[layer_index].set_line_dash([])
 
     def draw_elided_branch(self,head,tail,color,layer_index = -1):
         self.draw_dotted_line(head,tail,color,line_dash_index=0,layer_index=layer_index)
@@ -65,6 +70,7 @@ class Block():
         self.topL = topL
         self.botR = botR
         self.branch_x = None
+        self.segment_list = []
 
         if topL and botR:
             self.calculate_width_height()
@@ -83,8 +89,11 @@ class Block():
         self.width = self.botR.x - self.topL.x
         self.height = self.botR.y - self.topL.y
 
-    def check_nested_block(self,block):
-        return self.check_in_range(block.topL) and block.botR.y <= self.botR.y
+    def check_nested_block(self,block,select_tree=None):
+        if not select_tree or select_tree == RT:
+            return self.check_in_range(block.topL) and block.botR.y <= self.botR.y
+        elif select_tree == TC:
+            return self.check_in_range(block.botR) and block.botR.y <= self.botR.y
 
 # Block for ad_tree
 class AD_Block(Block):
@@ -109,7 +118,19 @@ class AD_Block(Block):
         self.height = height
 
 
+class Missing_Taxa_Segment(Block):
+    def __init__(self, subtree, ad_tree, missing_taxa,topL=None, botR=None):
+        super().__init__(topL, botR)
+        self.ad_tree = ad_tree
+        self.subtree = subtree # Missing taxa from which subtree
+        self.missing_taxa_list = missing_taxa # Include which taxa
 
+class Subtree_Block_Segment(Block):
+    def __init__(self, subtree,belong_block,topL=None, botR=None):
+        super().__init__(topL, botR)
+        self.subtree = subtree
+        self.belong_block = belong_block
+        self.belong_block.segment_list.append(self)
 
 
 

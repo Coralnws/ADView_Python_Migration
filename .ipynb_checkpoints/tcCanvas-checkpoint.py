@@ -45,7 +45,6 @@ class tcCanvas(MyCanvas):
         self.subtree_list = ad_Py.subtree_list
         self.duplicate_subtree = None
 
-
         if view == AD_INDIVIDUAL:
             self.individual_ad()
 

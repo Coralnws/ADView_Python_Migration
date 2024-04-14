@@ -8,6 +8,7 @@ import os
 import myCanvas as myCanvas
 import rtCanvas as rtCanvas
 import tcCanvas as tcCanvas
+import pairwiseCanvas as pairwiseCanvas
 import importlib
 importlib.reload(rtCanvas)
 importlib.reload(tcCanvas)
@@ -16,9 +17,14 @@ import numpy as np
 import plotly.express as px
 from sklearn.manifold import MDS
 import matplotlib.pyplot as plt
+from sklearn.manifold import TSNE
 
 
-class AD_Py:
+class ADpy:
+    # Testing
+    output = []
+    output2 = ""
+
     def __init__(self,treefile = None,type="newick"):
         # Reference Tree related
         self.rt = None  # Reference Tree
@@ -30,30 +36,43 @@ class AD_Py:
         self.rt_file = treefile
         self.tree_schema = type
         self.tree_distance_matrix = None
+        self.default_rt = None
 
         # AD/Tree collection related
         self.tc = []  # Tree Collection
         self.tc_taxa = []
+        self.subtree_list = []
         self.ad_individual_canvas = None # Individual ADs' Canvas
         self.ad_cluster_canvas = None # Cluster ADs' Canvas
         self.individual_canvas_parameters = {}   # { 'parameter_name' : value }
         self.cluster_canvas_parameters = {}
         self.ad_parameter_alter = True # Record whether ad_canvas's parameter change
 
+        # Paiwise canvas related
+        self.pairwise_canvas = None
+
+
+        self.default_subtree_attribute()
         # Reaf tree file and construct reference tree
         self.read_rt(treefile = treefile, type = type)
 
 
-    #####  Pubic Functions ####
+    #####  Public Functions ####
     def reference_tree(self,view_support=False):
         # Calculate height of canvas
         height = get_leaf_node_amount(self.rt) * RT_Y_INTERVAL + RT_Y_INTERVAL
 
-        if not self.rt_canvas or self.rt_canvas.view_support != view_support or self.rt_alter:
-            self.rt_canvas = rtCanvas.rtCanvas(self,width = CANVAS_MAX_WIDTH,height = height,view_support = view_support,tc = self.tc)
-            self.subtree_list = self.rt_canvas.subtree_list
+        if not self.rt_canvas and not self.pairwise_canvas:
+            self.default_subtree_attribute()
+            self.default_rt = None
+            self.rt_view_support = view_support
+            self.create_pairwise_rt_canvas(alter_type=BOTH)
+
+        if self.check_parameter_alter(view_support):
+            self.create_pairwise_rt_canvas(alter_type=RT)
 
         return self.rt_canvas
+
 
     def set_outgroup(self,outgroup_taxon):
         # Reconstruct Tree
@@ -88,6 +107,8 @@ class AD_Py:
             tree.id = index + 1
             tree.taxa_list = [leaf.taxon.label for leaf in tree.leaf_nodes()]
             tree.missing = set(self.rt.taxa_list) - set(tree.taxa_list)
+            tree.pairwise_canvas = None
+
             if namefile:
                 tree_name = file.readline().strip()
                 tree.name = tree_name
@@ -99,7 +120,7 @@ class AD_Py:
             tree.rf_distance = dendropy.calculate.treecompare.symmetric_difference(self.rt, tree)
 
         self.generate_tree_distance_matrix()
-        self.rt_alter = True
+        # self.rt_alter = True
         self.corresponding_branches()
         
     def tree_collection(self,sort_by=ID):
@@ -171,6 +192,14 @@ class AD_Py:
             first_ad = ad_interval[0]
             last_ad = ad_interval[1]
 
+        if tree_id and type(tree_id) is not list:
+            new_list = []
+            new_list.append(tree_id)
+            tree_id = new_list
+        if tree_name and type(tree_name) is not list:
+            tree_name = [tree_name]
+
+
         # Check if condition is logical
         # 1. First_ad < last_ad
         if first_ad and last_ad:
@@ -186,21 +215,21 @@ class AD_Py:
             self.parameter_error("ad_interval")
             return
         # 4. tree_id > 0
-        if tree_id and type(tree_id) is not list and tree_id <= 0:
-            self.parameter_error("tree_id")
+        if tree_id:
+            for check_id in tree_id:
+                if check_id <= 0:
+                    self.parameter_error("tree_id")
             return
         # 5. context_level >= 1
         if context_level < 1:
             self.parameter_error("context_level")
             return
-
-        self.subtree_list = self.rt_canvas.subtree_list
         # Parameter: width, height, context levels, show labels, show colors
         if scale != 1.0:
+            ad_per_row = (CANVAS_MAX_WIDTH - (3 * DEFAULT_PADDING_BETWEEN_AD)) // (DEFAULT_AD_WIDTH * scale)
             if scale < 0.5:
-                ad_per_row = (CANVAS_MAX_WIDTH - (3 * DEFAULT_PADDING_BETWEEN_AD)) // (DEFAULT_AD_WIDTH * 0.5)
-            else:
-                ad_per_row = (CANVAS_MAX_WIDTH - (3 * DEFAULT_PADDING_BETWEEN_AD)) // (DEFAULT_AD_WIDTH * scale)
+                ad_per_row *= 3
+
         else:
             ad_per_row = DEFAULT_AD_PER_ROW
 
@@ -214,7 +243,7 @@ class AD_Py:
 
                 canvas_height = (ad_row * DEFAULT_AD_HEIGHT * scale) + (2 * DEFAULT_PADDING_BETWEEN_AD) +  ((ad_row -
                                                                                                              1) * DEFAULT_PADDING_BETWEEN_AD)
-                self.ad_individual_canvas = tcCanvas.tcCanvas(layer = ad_row,ad_Py=self,view=view,
+                self.ad_individual_canvas = tcCanvas.tcCanvas(layer = ad_row,adPy=self,view=view,
                                                               width=CANVAS_MAX_WIDTH,
                                                               height=canvas_height, scale=scale,max_ad=max_ad,
                                                               ad_per_row=ad_per_row, context_level=context_level,
@@ -234,7 +263,7 @@ class AD_Py:
         # Parameter: differentiate inexact match, differentiate sister-group relationships
         elif view == AD_CLUSTER:
             if not self.ad_cluster_canvas or self.ad_parameter_alter:
-                self.ad_cluster_canvas = tcCanvas.tcCanvas(ad_Py=self,view=view,width=CANVAS_MAX_WIDTH,height=150,
+                self.ad_cluster_canvas = tcCanvas.tcCanvas(adPy=self,view=view,width=CANVAS_MAX_WIDTH,height=150,
                                                            scale=scale,context_level=context_level,
                                                            ad_per_row=ad_per_row,
                                                            show_block_proportional=show_block_proportional,
@@ -250,9 +279,14 @@ class AD_Py:
         # self.tree_distance_matrix = (self.tree_distance_matrix + self.tree_distance_matrix.T) / 2
         # np.fill_diagonal(self.tree_distance_matrix, 0)
 
-        mds = MDS(n_components=2, dissimilarity='precomputed',random_state=42)
-        self.tree_point_coordinates = mds.fit_transform(self.tree_distance_matrix)
+        # mds = MDS(n_components=2, dissimilarity='precomputed',random_state=42)
+        # self.tree_point_coordinates = mds.fit_transform(self.tree_distance_matrix)
         # self.tree_point_coordinates -= self.tree_point_coordinates.min(axis=0)
+
+        tsne = TSNE(n_components=2)
+        self.tree_point_coordinates = tsne.fit_transform(self.tree_distance_matrix)
+        # self.tree_point_coordinates -= self.tree_point_coordinates.min(axis=0)
+        # self.tree_point_coordinates = self.tree_point_coordinates.astype(np.float_)
 
         self.x_coor = []
         self.y_coor = []
@@ -275,7 +309,7 @@ class AD_Py:
         fig.update_traces(hovertemplate='%{text}',text=id_name, hoverinfo='text')
         # Remove legend labels
         fig.update_layout(dragmode=False,showlegend=False,width=600, height=600,plot_bgcolor=TREE_NAME_BG,xaxis=dict(
-            color=BLACK),yaxis=dict(color=BLACK))
+            color=BLANK),yaxis=dict(color=BLANK))
 
         # fig = px.scatter(x=self.tree_point_coordinates[:, 0], y=self.tree_point_coordinates[:, 1], color=color,
         #                  title='Tree Distance')
@@ -297,6 +331,33 @@ class AD_Py:
         # Save the modified tree to a new file
         tree.write(path="modified_tree_file.tre", schema="newick")
 
+    def pairwise_comparison(self,compare_tree=None):
+        # adPy,layer, width, height,rt_canvas,tc_tree
+        # Testing
+        if not self.rt_canvas and not self.pairwise_canvas:
+            self.create_pairwise_rt_canvas()
+
+        if self.tc:
+            compare_tree = self.tc[1]
+        # 36
+
+        self.pairwise_canvas.compare_tc_tree(compare_tree)
+
+        return self.pairwise_canvas
+
+    def tree_distribution_view(self):
+        print(self.subtree_list)
+        self.tree_distribution_view = tcCanvas.tcCanvas(adPy=self, view=GET_TREE_DISTRIBUTION)
+
+        for subtree in self.subtree_list:
+            print(f"Subtree {subtree.label}")
+            index = 1
+            print(subtree.topology_list)
+            for topology,tree_list in subtree.topology_list.items():
+                print(f"Topology {index} : {len(tree_list)}")
+                print(topology)
+                index += 1
+
         #### Internal Functions ####
     def read_rt(self,treefile,type):
         self.rt = dendropy.Tree.get(path=treefile, schema=type)
@@ -305,6 +366,8 @@ class AD_Py:
         rt_label = os.path.basename(treefile)
         self.rt.id = 0
         self.rt.name = rt_label
+        self.rt.level = 0
+        self.rt.pairwise_canvas = None
 
         # Get tree's taxa/leaf node
         self.rt.taxa_list = [leaf.taxon.label for leaf in self.rt.leaf_nodes()]
@@ -322,7 +385,7 @@ class AD_Py:
             for j in range(i+1,len(self.tc)):
                 # print(" " * 5 + "Tree " + str(j))
                 distance = dendropy.calculate.treecompare.symmetric_difference(tree_compare,self.tc[j])
-                self.tree_distance_matrix[i + 1, j + 1] = distance / 1.11
+                self.tree_distance_matrix[i + 1, j + 1] = distance / 1.1
                 # print(f"[{i+1},{j+1}] = " + str(distance))
 
         self.tree_distance_matrix = np.triu(self.tree_distance_matrix) + np.triu(self.tree_distance_matrix, k=1).T
@@ -346,15 +409,25 @@ class AD_Py:
                 node.corr.append(0)
 
                 for tc_node in tree.postorder_node_iter():
+                    if not hasattr(tc_node,'corr'):
+                        tc_node.corr = None
+                        tc_node.corr_similarity = 0
+
                     similarity = self.get_similarity(target_set=target_set,node=node,tc_node=tc_node)
                     if similarity > node.corr_similarity:
                         node.corr[tree.id] = tc_node
                         node.corr_similarity = similarity
 
+                        if similarity > tc_node.corr_similarity:
+                            tc_node.corr = node
+                            tc_node.corr_similarity = similarity
+
                         # print(similarity)
                         if similarity == 1.0:
                             node.exact_match += 1
                             node.exact_match_tree.append(tree)
+
+
     def get_similarity(self,target_set,node,tc_node):
         if tc_node.is_leaf():
             tc_node.card = 0 if tc_node.taxon.label in self.rt.missing else 1
@@ -388,6 +461,93 @@ class AD_Py:
         print(f"<Error> : {parameter} given was incorrect.")
         print("Please ensure that the information provided is logical.")
 
+    # Manage Subtree
+    def default_subtree_attribute(self):
+        self.subtree_list = []
+        self.subtree_label_used = [1, 1, 1, 1, 1]
+        self.subtree_color_used = [1, 1, 1, 1, 1]
+
+    def create_pairwise_rt_canvas(self,alter_type=BOTH):
+        height = get_leaf_node_amount(self.rt) * RT_Y_INTERVAL + RT_Y_INTERVAL * 2
+
+        if self.rt_alter:
+            self.default_rt = None
+            self.rt_alter = False
+
+        # Check paramater alter
+        if alter_type == BOTH:
+            # self.default_rt_value()
+            self.rt_canvas = rtCanvas.rtCanvas(self, width=CANVAS_MAX_WIDTH, height=height ,
+                                               view_support=self.rt_view_support, default_rt=self.default_rt)
+            self.pairwise_canvas = pairwiseCanvas.pairwiseCanvas(self, width=CANVAS_MAX_WIDTH, height=height)
+        elif alter_type == RT:
+            self.rt_canvas = rtCanvas.rtCanvas(self, width=CANVAS_MAX_WIDTH, height=height,
+                                               view_support=self.view_support, default_rt=self.default_rt)
+        elif alter_type == PAIRWISE:
+            self.pairwise_canvas = pairwiseCanvas.pairwiseCanvas(self, width=CANVAS_MAX_WIDTH, height=height)
+
+
+    def check_parameter_alter(self,view_support):
+        # Check whether parameter has alter and set parameter as self.attribute
+        if view_support != self.rt_view_support:
+            self.rt_view_support = view_support
+            return True
+
+    def select_subtree_from_tree(self,node_selected):
+        if not hasattr(node_selected, 'selected') or node_selected.selected == False:
+            # Ignore if 5 subtree had selected
+            if len(self.subtree_list) >= 5:
+                return None
+
+            # Choose block color
+            color_index = self.subtree_color_used.index(1)
+            self.subtree_color_used[color_index] = 0
+            color = SUBTREE_COLOR_LIST[color_index]
+
+            # Record new subtree - choose subtree label
+            subtree_label_index = self.subtree_label_used.index(1)
+            self.subtree_label_used[subtree_label_index] = 0
+            label = SUBTREE_LABEL_LIST[subtree_label_index]
+
+            # Create new subtree (class from myTree.py)
+            new_subtree = Subtree(label=label, belong_tree=self.rt, root=node_selected, color=color)
+
+            # Mark the layer as occupied and record corresponding subtree's label
+            node_selected.subtree = new_subtree
+            node_selected.selected = True
+
+            self.rt_canvas.draw_subtree_block(node_selected,new_subtree)
+            self.subtree_list.append(new_subtree)
+            self.pairwise_canvas.draw_subtree_block(node_selected,select_tree=RT,new_subtree=new_subtree)
+
+            if self.pairwise_canvas.tc_tree:
+                self.pairwise_canvas.draw_tc_subtree_block(new_subtree)
+                self.pairwise_canvas.draw_escape_taxa()
+
+
+            # return new_subtree
+
+        else:
+            self.rt_canvas.remove_subtree_block(node_selected.subtree)
+            self.pairwise_canvas.remove_subtree_block(node_selected.subtree)
+            self.subtree_list.remove(node_selected.subtree)
+
+            # Release Color
+
+            color_index = SUBTREE_COLOR_LIST.index(node_selected.subtree.color)
+            self.subtree_color_used[color_index] = 1
+            # Release Subtree Label
+            label_index = SUBTREE_LABEL_LIST.index(node_selected.subtree.label)
+            self.subtree_label_used[label_index] = 1
+
+            # Remove subtree from node and mark node as not-selected
+            node_selected.subtree = None
+            node_selected.selected = False
+
+            # if len(self.subtree_list) == 0:
+            #     self.rt_canvas.reset_subtree_canvas()
+            #     self.pairwise_canvas.reset_subtree_canvas()
+
 
 class Subtree:
     # rt = None  # Belong to which reference tree
@@ -400,18 +560,36 @@ class Subtree:
     # leaf_set = []
     # ad_block_list = []   # index = tc_index, value = [AD_Block list] : to record corresponding block in tree from tree collection
 
-    def __init__(self, label, rt, root, color, block):
+    def __init__(self, label, belong_tree, root, color):
         self.label = label
-        self.rt = rt
+        self.belong_tree = belong_tree
         self.root = root
         self.color = color
-
-        if block:
-            self.block_size = root.block.get_size()
-            self.block = block
+        self.corresponding_tc_subtree = None
 
         self.label_width = None
         self.leaf_set = set()
+
+        self.topology_list = {}
+    def subtree_to_string(self,node):
+        if len(node.child_nodes()) == 0:
+            return node.taxon.label
+        else:
+            child_strings = [self.subtree_to_string(child) for child in node.child_nodes()]
+            return "(" + ",".join(child_strings) + ")"
+
+    def check_and_set_topology(self,root,tc_tree_id,type=NODE_DIFFERENCE):
+        if type == TOPOLOGY_DIFFERENCE:
+            subtree_string = self.subtree_to_string(root)
+        elif type == NODE_DIFFERENCE:
+            children = [child.taxon.label for child in root.leaf_nodes()]
+            children = sorted(children)
+            subtree_string = ",".join(children)
+
+        if subtree_string not in self.topology_list:
+            self.topology_list[f"{subtree_string}"] = []
+
+        self.topology_list[f"{subtree_string}"].append(tc_tree_id)
 
     def set_rtLayer(self, rtCanvas_index):
         self.rtCanvas_index = rtCanvas_index
@@ -420,6 +598,18 @@ class Subtree:
         self.leaf_set = set()
         for leaf_node in self.root.leaf_nodes():
             self.leaf_set.add(leaf_node.taxon.label)
+
+
+    def set_block(self,block):
+        self.block = block
+        self.block_size = block.get_size()
+
+    def set_pairwise_block(self,pairwise_block):
+        self.pairwise_block = pairwise_block
+        self.block_size = pairwise_block.get_size()
+
+
+
 
 
 # AD
@@ -448,11 +638,15 @@ class AD_Tree:
 
         self.located_layer = 0
         self.tree_name_block = None
+        self.missing_taxa_list = None
+        self.missing_taxa_block = None
+        self.missing_taxa_segment = []
 
     def set_default(self):
         self.x = 8
         self.y = 8
         self.padding = 5  # Padding between block
+
 
     def set_position_size(self, x, y):
         self.topL = myCanvas.Point(x, y)
@@ -582,9 +776,6 @@ class AD_Tree:
             else:
                 return '(' + newick_str[:-1] + ')' + self.get_node_type(canvas,node,differentiate_inexact_match=differentiate_inexact_match)
 
-
-
-
     def get_node_type(self, canvas,node,differentiate_inexact_match=True):
         if node.type == LEAF:
             block = node.node_or_block
@@ -623,6 +814,13 @@ class AD_Tree:
             return node.type
         else:
             return ""
+
+    def check_in_range(self,x,y):
+        return x >= self.topL.x and x <= self.botR.x and y >= self.topL.y and y <= self.botR.y
+
+
+
+
 
 class AD_Node:
     def __init__(self, node_or_block, x_level, type, child_index, type_prior):
