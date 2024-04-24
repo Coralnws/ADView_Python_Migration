@@ -1,23 +1,35 @@
-from ipycanvas import Canvas,MultiCanvas
+from ipycanvas import Canvas,MultiCanvas,hold_canvas
 from ADpy import *
 from myCanvas import *
 from Utils import *
+from dupletree import DupleTree
+from quadstree import QuadTree
 import math
+import quads
+import time
 
 # Canvas for Reference Tree
 class rtCanvas(MyCanvas):
     # Initial x,y coordinates
     x = 30
     y = 30
+    SUBTREE_COMPARE_LAYER = -3
+    NODE_HOVER_LAYER = -2
+    RT_LAYER = -1
+
+    output = []
 
     def __init__(self,adPy,width,height,view_support,default_rt=None):
-        super().__init__( 7, width = width, height = height)
+        super().__init__( 8, width = width, height = height)
         # Layer 7 - reference tree
         # Layer 6 - hover block
         self.adPy = adPy
+        self.layer = 8
         self.rt = adPy.rt
         self.view_support = view_support
         self.tree_width = 1
+        self.dupletree = None
+
 
         self.layer_block_list = {}
         self.layer_occupied = [0, 0, 0, 0, 0]
@@ -29,19 +41,42 @@ class rtCanvas(MyCanvas):
 
         self.rt.level = 0
 
+        self.section_list = []
+        self.inner_section = True
+        self.last_draw_time = time.time()
+        self.last_mouse_position = None
+
+        self.setup_section_list()
+
         if not default_rt:
             self.default_rt = Canvas(width=self.width,height=self.height)
-            self.draw_rt(self.default_rt,node=self.rt.seed_node)
+            with hold_canvas(self):
+                self.draw_rt(self.default_rt,node=self.rt.seed_node)
+
             self.adPy.default_rt = self.default_rt
 
-        self[-1].draw_image(self.default_rt, 0, 0)
+
+        self[self.RT_LAYER].draw_image(self.default_rt, 0, 0)
 
         self.on_mouse_down(self.mouse_clicked)
         self.on_mouse_move(self.mouse_hover)
 
+    def setup_section_list(self):
+        section_cnt = math.ceil(self.height/ MIN_SECTION_HEIGHT)
+
+        for i in range(section_cnt):
+            self.section_list.append([])
+            if self.inner_section:
+                for j in range(3):
+                    self.section_list[i].append([])
+            # section_top_border = i * MIN_SECTION_HEIGHT
+            # new_dupletree = DupleTree(self,Point(0,section_top_border),Point(self.width/2,section_top_border +
+            #                                                                  MIN_SECTION_HEIGHT))
+            # self.section_list.append(new_dupletree)
 
     # Draw reference tree on rtcanvas
     def draw_rt(self,draw_canvas,node=None,level=0):
+
         # Default : Tree root as reference tree's root
         if node is None:
             node = self.rt.seed_node
@@ -90,7 +125,7 @@ class rtCanvas(MyCanvas):
 
             # To determine the midpoint of vertical line connecting multiple children
             first_child = child_nodes[0] if child_nodes else None
-            last_child = child_nodes[-1] if child_nodes else None
+            last_child = child_nodes[self.RT_LAYER] if child_nodes else None
 
             if self.view_support:
                 x = self.x * level
@@ -145,12 +180,59 @@ class rtCanvas(MyCanvas):
             else:
                 node.parent_node.block = Block(node.block.topL,node.block.botR)
 
+
         node.selected = False
+        self.insert_node_section_list(node)
+        # self.dupletree.insert(node=node,point=node.mouse_range.topL)
+        # self.dupletree.insert(node=node, point=node.mouse_range.botR)
+        # self.dupletree.insert(node=node, point=Point(node.mouse_range.botR.x, node.mouse_range.topL.y))
+        # self.dupletree.insert(node=node, point= Point(node.mouse_range.topL.x, node.mouse_range.botR.y))
+        # self.quads.insert(quads.Point(block.topL.x, block.topL.y, data=node))
+        # self.quads.insert(quads.Point(block.topL.x, block.botR.y, data=node))
+        # self.quads.insert(quads.Point(block.botR.x, block.topL.y, data=node))
+        # self.quads.insert(quads.Point(block.botR.x, block.botR.y, data=node))
 
         # Testing
         # self.draw_dots(node.pos.x,node.pos.y - X_INTERVAL)
         # self.draw_dots(node.pos.x + X_INTERVAL, node.pos.y)
         # self.draw_dots(node.pos.x + X_INTER0L.y,8,node.range_botR.y - node.range_topL.y,BEIGE)
+
+    def insert_node_section_list(self,node):
+        top_section_index = math.floor(node.mouse_range.topL.y / MIN_SECTION_HEIGHT)
+        bottom_section_index = math.floor(node.mouse_range.botR.y / MIN_SECTION_HEIGHT)
+
+        if not self.inner_section:
+            if top_section_index == bottom_section_index:
+                self.section_list[top_section_index].append(node)
+            else:
+                for i in range(top_section_index, bottom_section_index + 1):
+                    self.section_list[i].append(node)
+
+            return
+
+        if top_section_index == bottom_section_index:
+            section_midpoint = top_section_index * MIN_SECTION_HEIGHT + MIN_SECTION_HEIGHT / 2
+            if node.mouse_range.botR.y <= section_midpoint:
+                self.section_list[top_section_index][1].append(node)
+            elif node.mouse_range.topL.y >= section_midpoint:
+                self.section_list[top_section_index][2].append(node)
+            else:
+                self.section_list[top_section_index][0].append(node)
+        else:
+            for i in range(top_section_index, bottom_section_index + 1):
+                section_midpoint = i * MIN_SECTION_HEIGHT + MIN_SECTION_HEIGHT / 2
+                if i == 0:
+                    if node.mouse_range.topL.y <= section_midpoint:
+                        self.section_list[i][1].append(node)
+                    else:
+                        self.section_list[i][2].append(node)
+                elif i == bottom_section_index:
+                    if node.mouse_range.topL.y <= section_midpoint:
+                        self.section_list[i][1].append(node)
+                    else:
+                        self.section_list[i][2].append(node)
+                else:
+                    self.section_list[i][0].append(node)
 
     # Drawing leaf node on canvas
     def draw_leaf_node(self,canvas,node):
@@ -160,38 +242,80 @@ class rtCanvas(MyCanvas):
         canvas.move_to(node.pos.x, node.pos.y - 5)
         canvas.line_to(node.pos.x + RT_X_INTERVAL, node.pos.y - 5)
         canvas.stroke()
-        canvas.fill_text(node.taxon.label, node.pos.x + RT_X_INTERVAL, node.pos.y)
+        canvas.fill_text(node.taxon.label, node.pos.x + RT_X_INTERVAL * 2, node.pos.y)
 
     # Filter function
     def filter_node_selected(self,node, x , y):
-        # if node.mouse_range.check_inRange(Point(x,y)):
         if node.mouse_range.topL.x <= x <= node.mouse_range.botR.x and node.mouse_range.topL.y <= y <= node.mouse_range.botR.y:
             return True
         return False
+    def filter_node_from_section_list(self,x,y):
+        node_selected = None
+        if x > self.tree_width:
+            return None
+
+        self.output = []
+        inner_section_check = [1,1,1]
+
+        section_index = math.floor(y / MIN_SECTION_HEIGHT)
+        inner_section_check[0] = 0
+        for node in self.section_list[section_index][0]:
+            if self.filter_node_selected(node, x, y):
+                return node
+
+        section_midpoint = section_index * MIN_SECTION_HEIGHT + MIN_SECTION_HEIGHT / 2
+        if y <= section_midpoint:
+            subsection_list = self.section_list[section_index][1]
+            inner_section_check[1] = 0
+        else:
+            subsection_list = self.section_list[section_index][2]
+            inner_section_check[2] = 0
+
+        for node in subsection_list:
+            if self.filter_node_selected(node, x, y):
+                return node
+
+        subsection_index = inner_section_check.index(1)
+        subsection_list = self.section_list[section_index][subsection_index]
+        for node in subsection_list:
+            if self.filter_node_selected(node, x, y):
+                return node
+
+        return node_selected
+
 
     # Handling mouse click events in rt canvas
     def mouse_clicked(self, x, y):
-        node_selected = self.rt.find_node(lambda node: self.filter_node_selected(node, x,y))
-        if not node_selected:
-            return
+        self.clear_subtree_compare_canvas()
+        if self.node_hover and self.filter_node_selected(self.node_hover,x,y):
+            node_selected = self.node_hover
+        else:
+            node_selected = self.filter_node_from_section_list(x,y)
+        # node_selected = self.rt.find_node(lambda node: self.filter_node_selected(node, x,y))
 
-        # Testing
-        # self.draw_rec(node_selected.block.topL.x,node_selected.block.topL.y,10,10,BLACK)
-
-        self.adPy.select_subtree_from_tree(node_selected)
-        # self.draw_subtree_block(node_selected)
+        if node_selected:
+            self.adPy.select_subtree_from_tree(node_selected)
 
     def mouse_hover(self, x, y):
-        node_selected = self.rt.find_node(lambda node: self.filter_node_selected(node, x,y))
+        current_time = time.time()
+        if current_time - self.last_draw_time > 0.1:
+            self.last_draw_time = current_time
+            node_selected = self.filter_node_from_section_list(x, y)
+
+            # if (x, y) != self.last_mouse_position:
+            #     self.last_mouse_position = (x, y)
+
+        else:
+            return
 
         if not node_selected:
             self.node_hover = node_selected
-            self[-2].clear()
-            self[-2].flush()
+            self[self.NODE_HOVER_LAYER].clear()
+            self[self.NODE_HOVER_LAYER].flush()
 
         if node_selected != self.node_hover:
-            self[-2].clear()
-            self[-2].flush()
+            self[self.NODE_HOVER_LAYER].clear()
+            self[self.NODE_HOVER_LAYER].flush()
 
         if node_selected and node_selected != self.node_hover:
             self.node_hover = node_selected
@@ -209,8 +333,8 @@ class rtCanvas(MyCanvas):
         self[layer_index].fill_text(label_str, label_x, label_y)
 
         # Testing
-        self[layer_index].fill_text("layer: " + str(layer_index), subtree.block.botR.x + 5,
-                                    subtree.block.topL.y + 5)
+        # self[layer_index].fill_text("layer: " + str(layer_index), subtree.block.botR.x + 5,
+        #                             subtree.block.topL.y + 5)
 
     def draw_node_details(self,node):
         # support , length , exact match
@@ -226,9 +350,9 @@ class rtCanvas(MyCanvas):
         else:
             exact_match = '- '
 
-        self[-2].begin_path()
-        self[-2].fill_style = BLACK
-        self[-2].font = LEAF_FONT
+        self[self.NODE_HOVER_LAYER].begin_path()
+        self[self.NODE_HOVER_LAYER].fill_style = BLACK
+        self[self.NODE_HOVER_LAYER].font = LEAF_FONT
 
         if self.view_support:
             label_pos = self.tree_width + 50
@@ -239,9 +363,9 @@ class rtCanvas(MyCanvas):
         if node.pos.y + 40 > self.height:
             label_y = self.height - 40
 
-        self[-2].fill_text("Support : " + support, label_pos , label_y)
-        self[-2].fill_text("Length :  " + str(length), label_pos, label_y + 15)
-        self[-2].fill_text("Exact Match :  " + str(exact_match) + "%", label_pos , label_y + 30)
+        self[self.NODE_HOVER_LAYER].fill_text("Support : " + support, label_pos , label_y)
+        self[self.NODE_HOVER_LAYER].fill_text("Length :  " + str(length), label_pos, label_y + 15)
+        self[self.NODE_HOVER_LAYER].fill_text("Exact Match :  " + str(exact_match) + "%", label_pos , label_y + 30)
 
     def draw_hover_block(self):
         if not self.node_hover.is_leaf() and self.view_support:
@@ -250,7 +374,7 @@ class rtCanvas(MyCanvas):
         else:
             self.draw_rec(self.node_hover.pos.x, self.node_hover.pos.y - RT_X_INTERVAL, RT_X_INTERVAL - 2, RT_X_INTERVAL - 2, BLACK, layer_index = -2)
 
-        self[-2].flush()
+        self[self.NODE_HOVER_LAYER].flush()
 
     def generate_subtree_block(self,node_selected):
         if node_selected.is_leaf():
@@ -288,7 +412,7 @@ class rtCanvas(MyCanvas):
         self[layer_index].flush()
 
         # Testing
-        self[layer_index].fill_text("layer: " + str(layer_index), new_block.botR.x + 5, new_block.topL.y + 5)
+        # self[layer_index].fill_text("layer: " + str(layer_index), new_block.botR.x + 5, new_block.topL.y + 5)
 
     def remove_subtree_block(self,subtree):
         # Clear corresponding layer
@@ -411,3 +535,30 @@ class rtCanvas(MyCanvas):
     def reset_subtree_canvas(self):
         for i in range(0,5):
             self[i].clear()
+
+
+    def clear_subtree_compare_canvas(self):
+        self[self.SUBTREE_COMPARE_LAYER].clear()
+        self[self.SUBTREE_COMPARE_LAYER].flush()
+
+    def draw_subtree_compare_nodes(self,nodes_list):
+        self.clear_subtree_compare_canvas()
+        self.output = []
+        for node in nodes_list:
+            rt_node = node.corr
+            self.draw_nodes_dots(rt_node)
+
+    def draw_nodes_dots(self,node):
+        self[self.SUBTREE_COMPARE_LAYER].fill_style = BLACK
+        self[self.SUBTREE_COMPARE_LAYER].stroke_style = BLACK
+        radius = 4
+        self[self.SUBTREE_COMPARE_LAYER].fill_arc(node.pos.x + RT_X_INTERVAL + 5 , node.pos.y - 5,
+                                             radius, 0, 360)
+
+
+        self[self.SUBTREE_COMPARE_LAYER].flush()
+
+
+
+
+

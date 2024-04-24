@@ -58,9 +58,9 @@ IS_DESCENDANT = 3
 NON_DESCENDANT = 4
 
 # TC_CANVAS TYPE
-AD_INDIVIDUAL = "Individual"
-AD_CLUSTER = "Cluster"
-GET_TREE_DISTRIBUTION = 'Get Tree Distribution'
+AD_INDIVIDUAL = "AD Individual"
+AD_CLUSTER = "AD Cluster"
+TREE_DISTRIBUTION = 'Tree Distribution'
 
 # Type of AD_BLOCK
 INDIVIDUAL_BLOCK = 'Individual_blank_block'
@@ -82,6 +82,7 @@ TREE_NAME_MAX_LENGTH = 17
 
 BLOCK_MINIMUM_HEIGHT = [20,20,20,20,15,15]
 NESTED_BLOCK_MINIMUM_HEIGHT = 15
+MIN_SECTION_HEIGHT = 30
 
 AD_BRANCH_LENGTH = 5
 ELIDED_BRANCH_LENGTH = 10
@@ -96,8 +97,8 @@ PAIRWISE_RIGHT_PADDING = 100
 TREE_PADDING = 20
 
 # type in pairwise
-RT = 'reference tree'
-TC = 'tree collection'
+RT = 'Reference Tree'
+TC = 'Tree Collection'
 REDRAW_BLOCK_IN_PAIRWISE = 'redraw'
 
 # Alter type
@@ -116,6 +117,15 @@ SPACE_SUFFICIENT = 'Space sufficient'
 # Tree Distribution
 NODE_DIFFERENCE = 'Node difference'
 TOPOLOGY_DIFFERENCE = 'Topology difference'
+MINIMUN_BUTTON_WIDTH = 30
+
+# Check parameter
+NO_CHANGE = 'no change'
+CHANGED = 'changed'
+AD_NO_FILTER = 'ad no filter'
+EXPORT_NO_FILTER = 'export no filter'
+
+
 
  # Check Condition 
 BREAK = 'break'

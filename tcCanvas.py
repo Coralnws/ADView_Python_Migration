@@ -1,3 +1,4 @@
+from ipycanvas import hold_canvas
 import ADpy as adPy
 from myCanvas import *
 from Utils import *
@@ -11,21 +12,24 @@ class tcCanvas(MyCanvas):
     id = None
     ad_list = []
     rt_ad = None
-    AD_LAYER = -3
-    TREE_NAME_LAYER = -2
-    COMPARISON_VIEW_LAYER = -1
-    TREE_SELECTED_BLOCK_LAYER = 0
+    subtree_output = []
+
 
     # layer -1 for subtree comparison view
     # layer -2 for tree name
     # layer -3 forward for ad
     def __init__(self,adPy,view,ad_per_row=DEFAULT_AD_PER_ROW,width=1100, height=1100,scale=1.0,max_ad=None,
                  context_level=2,first_ad=None,last_ad=None,tree_id=None,tree_name=None,sort_by=ID,
-                 espace_taxa_as_context_block=False,show_block_proportional=False,parameter_from_individual_ad=True,
+                 escape_taxa_as_context_block=True,show_block_proportional=False,parameter_from_individual_ad=True,
                  subtree_independent=True,differentiate_inexact_match=True,layer=5,show_tree_name=False):
         super().__init__(layer = layer + 4, width = width, height = height)
 
         # Common attribute
+        self.AD_LAYER = -3
+        self.TREE_NAME_LAYER = -2
+        self.COMPARISON_VIEW_LAYER = -1
+        self.TREE_SELECTED_BLOCK_LAYER = 0
+
         self.adPy = adPy
         self.ad_list = []
         self.scale = scale
@@ -35,15 +39,19 @@ class tcCanvas(MyCanvas):
         self.context_level = context_level
         self.scale_alter = False
 
-        self.espace_taxa_as_context_block = espace_taxa_as_context_block  # True if show all independent leaf
-        self.show_block_proportional = show_block_proportional  # True if colored segment width proportional with block width
-        self.parameter_from_individual_ad = parameter_from_individual_ad  # Set parameter of cluster ad same as individual ad canvas
-        self.subtree_independent = subtree_independent
+        self.cluster_agree_rt = None
 
         self.view = view
         self.adPy = adPy
         self.rt = adPy.rt
         self.tc = self.adPy.sort_tc(tc_list=self.adPy.tc, sort_by=sort_by)
+
+        self.escape_taxa_as_context_block = escape_taxa_as_context_block  # True if show all independent leaf
+        self.show_block_proportional = show_block_proportional  # True if colored segment width proportional with block width
+        self.parameter_from_individual_ad = parameter_from_individual_ad  # Set parameter of cluster ad same as individual ad canvas
+        self.subtree_independent = subtree_independent
+
+
         self.duplicate_subtree = None
 
         # Individual_ad
@@ -57,6 +65,19 @@ class tcCanvas(MyCanvas):
         self.tree_hover = None
         self.tree_selected = None
 
+        self.topology_list = []
+        self.topology_canvas_list = []
+        self.prepare_subtree_list()
+
+        # Construct rt ad and get topology
+        check_elided = {}
+        check_elided['node'] = None
+        check_elided['context_level'] = 0
+        self.construct_ad(tc_tree=self.adPy.rt, level=1, check_elided=check_elided)
+        self.adPy.rt.ad_tree = self.ad_list[0]
+        self.adPy.rt.topology_string = self.adPy.rt.ad_tree.ad_to_string(self,differentiate_inexact_match=False)
+
+        self.ad_list = []
         # Cluster_ad
         self.differentiate_inexact_match = differentiate_inexact_match
 
@@ -68,8 +89,8 @@ class tcCanvas(MyCanvas):
         elif view == AD_CLUSTER:
             self.cluster_ad()
 
-        elif view == GET_TREE_DISTRIBUTION:
-            self.prepare_subtree_list()
+        elif view == TREE_DISTRIBUTION:
+            # self.prepare_subtree_list()
             self.generate_ad_list()
 
     #------------------- Individual ad view ----------------------#
@@ -80,8 +101,6 @@ class tcCanvas(MyCanvas):
         else:
             self.condition_exist = True
 
-        self.prepare_subtree_list()
-
         self.generate_ad_list()
 
         self.construct_individual_ad_canvas()
@@ -89,6 +108,7 @@ class tcCanvas(MyCanvas):
     def prepare_subtree_list(self):
         for subtree in self.adPy.subtree_list:
             subtree.get_leaf_nodes()
+            subtree.topology_list = {}
 
         self.adPy.subtree_list = sorted(self.adPy.subtree_list, key=lambda x: len(x.leaf_set), reverse=True)
 
@@ -177,12 +197,12 @@ class tcCanvas(MyCanvas):
 
         if self.scale_alter:
             self.display_content_exceed_error()
-
             # self.height += (self.height * self.scale) * 2
 
-        self.draw_ad_tree_rec(self.ad_list)
+        self.cluster_from_ad_list()
+        self.generate_topology_canvas()
 
-
+        # self.draw_ad_tree_rec(self.ad_list)
 
     def construct_ad(self,tc_tree,construct_rt=False,tc_node=None,current_ad_node=None,level=0,nested_subtree=None,nested_ad=None,check_elided={},nested_subtree_duplicate=False):
 
@@ -191,6 +211,7 @@ class tcCanvas(MyCanvas):
             tc_node.index = 0
 
             ad = adPy.AD_Tree(id=tc_tree.id,tc_tree=tc_tree,tc_canvas=self)  # Create a new AD_Tree which belong to
+            tc_tree.ad_tree = ad
             # current tc_tree
             ad.root = adPy.AD_Node(node_or_block=tc_node,x_level=level,type=ROOT,child_index=None,type_prior=None)
 
@@ -233,6 +254,10 @@ class tcCanvas(MyCanvas):
                     result = result_tmp
 
                 if result == SUBTREE_ROOT or result == INDEPENDENT_LEAF:
+                    # subtree_prior = 5 - SUBTREE_LABEL_LIST.index(subtree.label)
+                    # print(f"subtree_prior = {subtree_prior}")
+                    # result -= subtree_prior
+                    # print(f"result = {result}")
                     break
 
             result_list[child] = [result,subtree]
@@ -240,6 +265,7 @@ class tcCanvas(MyCanvas):
         # Sort by result
         sorted_list = dict(sorted(result_list.items(), key=lambda item: item[1][0]))
         check_result = { value[0] for value in sorted_list.values() }
+
 
         if len(check_result) == 1:
             # Elided stop here
@@ -259,14 +285,13 @@ class tcCanvas(MyCanvas):
                     self.ad_constructing.insert_node(parent, current_ad_node)
 
         for node,result in sorted_list.items():
-
             self.generate_block_by_result(result=result[0],subtree=result[1],tc_tree=tc_tree,tc_node=node,current_ad_node=current_ad_node,level=level,nested_subtree=nested_subtree,nested_ad=nested_ad,check_elided=check_elided,nested_subtree_duplicate=nested_subtree_duplicate)
 
-    def generate_block_by_result(self,result,subtree,tc_tree,tc_node=None,current_ad_node=None,level=0,nested_subtree=None,nested_ad=None,check_elided={},nested_subtree_duplicate=False):
 
+    def generate_block_by_result(self,result,subtree,tc_tree,tc_node=None,current_ad_node=None,level=0,nested_subtree=None,nested_ad=None,check_elided={},nested_subtree_duplicate=False):
         if result == INDEPENDENT_LEAF:
             # print("INDEPENDENT_LEAF")
-            # if self.espace_taxa_as_context_block and not nested_subtree_duplicate:
+            # if self.escape_taxa_as_context_block and not nested_subtree_duplicate:
             #     return
 
             # print("INDEPENDENT_LEAF")
@@ -281,7 +306,7 @@ class tcCanvas(MyCanvas):
                                         child_index=tc_node.index,type_prior=result)
 
 
-            if not self.espace_taxa_as_context_block and check_elided['node'] and check_elided['context_level'] >=self.context_level:
+            if not self.escape_taxa_as_context_block and check_elided['node'] and check_elided['context_level'] >=self.context_level:
                 ori_child = check_elided['node'].children.pop()
                 current_ad_node.child_index = ori_child.child_index
                 if nested_ad:
@@ -295,10 +320,9 @@ class tcCanvas(MyCanvas):
                 check_elided['node'] = None
                 check_elided['context_level'] = 0
 
-            elif not self.espace_taxa_as_context_block:
+            elif not self.escape_taxa_as_context_block:
                 check_elided['node'] = None
                 check_elided['context_level'] = 0
-
 
             if nested_ad:
                 nested_ad.insert_node(current_ad_node, new_ad_node)
@@ -315,14 +339,15 @@ class tcCanvas(MyCanvas):
             # if corresponding subtree exactly same as reference subtree
 
             if result == DUPLICATE_SUBTREE_ROOT:
+                result = self.check_subtree_combine(tc_node, tree_index=tc_tree.id)
                 subtree_block = self.ad_subtree_block(subtree=self.duplicate_subtree,subtree_duplicate=True)
                 subtree_block.color = []
                 subtree_block.taxa_list = {leaf.taxon.label for leaf in tc_node.leaf_nodes()}
                 # subtree_block.duplicate_subtree_taxa_count
                 subtree_block.exact_match = []
+
                 for index,duplicate_subtree in enumerate(self.duplicate_subtree):
                     # Calculate subtree topology
-
                     duplicate_subtree.check_and_set_topology(tc_node,tc_tree.id)
 
                     subtree_block.color.append(duplicate_subtree.color)
@@ -335,6 +360,8 @@ class tcCanvas(MyCanvas):
 
                 for count in subtree_block.duplicate_subtree_taxa_count:
                     subtree_block.subtree_taxa_count += count
+
+
 
             else:
                 subtree_block = self.ad_subtree_block(subtree=subtree,subtree_duplicate=False)
@@ -359,7 +386,7 @@ class tcCanvas(MyCanvas):
                 ori_child = check_elided['node'].children.pop()
 
                 parent = check_elided['node']
-                if not subtree_block.exact_match and not self.espace_taxa_as_context_block:
+                if not subtree_block.exact_match and not self.escape_taxa_as_context_block:
                     current_ad_node.child_index = ori_child.child_index
                     if nested_ad:
                         nested_ad.insert_node(parent, current_ad_node)
@@ -399,8 +426,11 @@ class tcCanvas(MyCanvas):
             if tc_node.is_leaf():
                 return
 
+            # self.ad_constructing.plot_tree()
+
             # Check nested subtree/block
             for check_subtree in self.adPy.subtree_list:
+                # result = self.check_subtree_combine(tc_node, tree_index=tc_tree.id)
                 if result == DUPLICATE_SUBTREE_ROOT:
                     if check_subtree in self.duplicate_subtree:
                         continue
@@ -423,8 +453,9 @@ class tcCanvas(MyCanvas):
                     nested_ad.root = adPy.AD_Node(node_or_block=tc_node, x_level=0, type=ROOT,child_index=None,
                                                    type_prior=result)
 
-                    check_elided['node'] = nested_ad.root
-                    check_elided['context_level'] = 0
+                    new_check_elided = {}
+                    new_check_elided['node'] = nested_ad.root
+                    new_check_elided['context_level'] = 0
 
                     nested_ad.is_nested = True
                     new_ad_node.nested_tree = nested_ad
@@ -434,13 +465,12 @@ class tcCanvas(MyCanvas):
                         nested_subtree_duplicate=True
 
                     self.construct_ad(tc_tree=tc_tree, tc_node=tc_node, current_ad_node=nested_ad.root, level=1,
-                                      nested_subtree=nested_subtree, nested_ad=nested_ad,check_elided=check_elided,nested_subtree_duplicate=nested_subtree_duplicate)
+                                      nested_subtree=nested_subtree, nested_ad=nested_ad,check_elided=new_check_elided,
+                                      nested_subtree_duplicate=nested_subtree_duplicate)
 
                     break
 
-            self.duplicate_subtree = None
-
-
+            # self.duplicate_subtree = None
 
         elif result == IS_DESCENDANT:
             # print("IS_DESCENDANT")
@@ -486,7 +516,8 @@ class tcCanvas(MyCanvas):
     def check_relation(self,subtree,node,tree_index,nested_subtree_duplicate):
         # If node is subtree's root
         if node == subtree.root.corr[tree_index]:
-            if not self.subtree_independent and self.check_subtree_combine(node,tree_index=tree_index) == DUPLICATE_SUBTREE_ROOT:
+            result = self.check_subtree_combine(node,tree_index=tree_index)
+            if not self.subtree_independent and result == DUPLICATE_SUBTREE_ROOT:
                 return DUPLICATE_SUBTREE_ROOT
             else:
                 return SUBTREE_ROOT
@@ -497,7 +528,9 @@ class tcCanvas(MyCanvas):
                 return INDEPENDENT_LEAF
 
         if self.check_leaf_node_descendant(subtree,node) == IS_DESCENDANT:
-            if self.espace_taxa_as_context_block:
+
+            if self.escape_taxa_as_context_block:
+
                 if nested_subtree_duplicate or self.check_subtree_in_descendant(node,tree_index=tree_index):
                     return IS_DESCENDANT
             else:
@@ -507,7 +540,6 @@ class tcCanvas(MyCanvas):
         return NON_DESCENDANT
 
     def check_leaf_node_descendant(self,subtree,node):
-
         leaf_nodes = {leaf.taxon.label for leaf in node.leaf_nodes()}
 
         if leaf_nodes.intersection(subtree.leaf_set):
@@ -533,6 +565,7 @@ class tcCanvas(MyCanvas):
 
         if len(check_list) > 1:
             self.duplicate_subtree = check_list
+
             return DUPLICATE_SUBTREE_ROOT
         else:
             return False
@@ -557,7 +590,7 @@ class tcCanvas(MyCanvas):
         # print("padding:" + str(self.padding))
 
         ad_y = DEFAULT_PADDING_BETWEEN_AD
-        if self.view == AD_CLUSTER:
+        if self.view == AD_CLUSTER or TREE_DISTRIBUTION:
             ad_y += CLUSTER_NUMBER_BAR_HEIGHT * self.scale + DEFAULT_PADDING_BETWEEN_BLOCK
         elif self.view == AD_INDIVIDUAL and self.show_tree_name:
                 ad_y += TREE_NAME_LABEL_HEIGHT + DEFAULT_PADDING_BETWEEN_BLOCK
@@ -567,7 +600,6 @@ class tcCanvas(MyCanvas):
             # Testing
             # if index in [2,4,5,6,7,8,9,10,11,12,16,17,18,19]:
             #     ad_tree.missing_taxa_list = {'Monomastix opisthostigma'}
-
             if ad_tree.missing_taxa_list:
                 for subtree in self.adPy.subtree_list:
                     missing_taxa_from_subtree = subtree.leaf_set.intersection(ad_tree.missing_taxa_list)
@@ -594,12 +626,7 @@ class tcCanvas(MyCanvas):
             ad_x = self.padding + (ad_index * self.ad_width) + (ad_index * (self.padding-5))
 
             ad_tree.set_position_size(ad_x,ad_y)
-            if self.view == AD_INDIVIDUAL:
-                layer = self.AD_LAYER - current_row
-                ad_tree.located_layer = layer
-                self[layer].ad_list.append(ad_tree)
-            else:
-                ad_tree.located_layer = self.AD_LAYER
+            ad_tree.located_layer = self.AD_LAYER
 
             # if self.default_value:
             ad_tree.set_default()
@@ -750,56 +777,10 @@ class tcCanvas(MyCanvas):
     # ad_tree.padding / ad_tree.initial_x,initial_y /
     # Function to draw ad_tree in each AD
     # Statement in this function will only involve one ad_tree
-    def draw_ad_tree(self,ad_tree=None):
+    def paste_ad_tree_canvas(self,ad_tree):
+        self.draw_ad_tree_rec(self.ad_list)
 
-        ad_tree.y *= self.scale
-        for node in ad_tree.traverse_postorder():
-
-            if node.type == LEAF:
-                block = node.node_or_block
-
-                scale_tmp = self.scale
-
-                if self.scale > 1.0:
-                    scale_tmp = 1.0
-                elif self.scale < 0.6:
-                    scale_tmp = 0.6
-
-                # scale_tmp = 0.7 if self.scale < 0.7 else self.scale
-
-                x = ad_tree.topL.x + (ad_tree.x * scale_tmp) + (
-                        ad_tree.x * node.x_level * scale_tmp)  # ad_pos + padding
-
-                # Calculate block position
-                if ad_tree.is_nested:
-                    y = ad_tree.topL.y + ad_tree.y + (12 * scale_tmp)
-                else:
-                    y = ad_tree.topL.y + ad_tree.y
-
-                block.topL = Point(x, y)
-
-                block.botR = Point(ad_tree.botR.x - ad_tree.x * self.scale, y + block.height)
-
-                # Calculate branch position and generate node's branch
-                if block.is_elided:
-                    node.construct_elided_branch(x, y + (block.height / 2), scale_tmp)
-                else:
-                    node.construct_branch(x,y + (block.height / 2),scale_tmp)
-
-                    # Draw block
-                if block.type == INDIVIDUAL_BLOCK or block.type == INDIVIDUAL_LEAF_BLOCK:
-                    self.draw_indv_block(block=block,ad_tree=ad_tree)
-
-                elif block.type == SUBTREE_BLOCK:
-                    self.draw_subtree_block(block=block,ad_tree=ad_tree,scale_tmp=scale_tmp)
-
-                if ad_tree.is_nested:
-                    ad_tree.y += block.height + ad_tree.padding
-                else:
-                    ad_tree.y += block.height + ad_tree.padding * scale_tmp
-
-            if node.type == INTERNAL or node.type == ROOT:
-                self.draw_root_internal(node,layer_index=ad_tree.located_layer)
+        self[ad_tree.located_layer].draw_image(ad_tree.topology.ad_canvas,ad_tree.topL.x,ad_tree.topL.y)
 
         if not ad_tree.is_nested and self.show_tree_name:
             self.write_tree_name(ad_tree)
@@ -817,6 +798,95 @@ class tcCanvas(MyCanvas):
 
             self.draw_missing_taxa_block(ad_tree)
 
+    def draw_ad_tree(self,ad_tree=None,canvas=None,cluster=False):
+        with hold_canvas(self):
+            ad_tree.y *= self.scale
+            for node in ad_tree.traverse_postorder():
+                if canvas and not ad_tree.is_nested:
+                    if cluster:
+                        ad_topL_x = 5
+                        ad_topL_y = CLUSTER_NUMBER_BAR_HEIGHT + DEFAULT_PADDING_BETWEEN_BLOCK * 2 + 5
+
+                        ad_tree.topL.x = ad_topL_x
+                        ad_tree.topL.y = ad_topL_y
+                    else:
+                        ad_topL_x = 0
+                        ad_topL_y = 0
+
+                    ad_botR_x = self.ad_width
+                    ad_botR_y = self.ad_height
+
+                else:
+                    ad_topL_x = ad_tree.topL.x
+                    ad_topL_y = ad_tree.topL.y
+                    ad_botR_x = ad_tree.botR.x
+                    ad_botR_y = ad_tree.botR.y
+
+                if node.type == LEAF:
+                    block = node.node_or_block
+
+                    scale_tmp = self.scale
+
+                    if self.scale > 1.0:
+                        scale_tmp = 1.0
+                    elif self.scale < 0.6:
+                        scale_tmp = 0.6
+
+                    # scale_tmp = 0.7 if self.scale < 0.7 else self.scale
+
+                    x = ad_topL_x + (ad_tree.x * scale_tmp) + (
+                            ad_tree.x * node.x_level * scale_tmp)  # ad_pos + padding
+
+                    # Calculate block position
+                    if ad_tree.is_nested:
+                        y = ad_topL_y + ad_tree.y + (12 * self.scale)
+                    else:
+                        y = ad_topL_y + ad_tree.y
+
+                    block.topL = Point(x, y)
+
+                    block.botR = Point(ad_botR_x - ad_tree.x * self.scale, y + block.height)
+
+                    # Calculate branch position and generate node's branch
+                    if block.is_elided:
+                        node.construct_elided_branch(x, y + (block.height / 2), scale_tmp)
+                    else:
+                        node.construct_branch(x,y + (block.height / 2),scale_tmp)
+
+                        # Draw block
+                    if block.type == INDIVIDUAL_BLOCK or block.type == INDIVIDUAL_LEAF_BLOCK:
+                        self.draw_indv_block(block=block,ad_tree=ad_tree,canvas=canvas)
+
+                    elif block.type == SUBTREE_BLOCK:
+                        self.draw_subtree_block(block=block,ad_tree=ad_tree,scale_tmp=scale_tmp,canvas=canvas,cluster=False)
+
+                    if ad_tree.is_nested:
+                        ad_tree.y += block.height + ad_tree.padding
+                    else:
+                        ad_tree.y += block.height + ad_tree.padding * scale_tmp
+
+                if node.type == INTERNAL or node.type == ROOT:
+                    self.draw_root_internal(node,layer_index=ad_tree.located_layer,canvas=canvas)
+
+            if canvas is not None:
+                return
+
+        # if not ad_tree.is_nested and self.show_tree_name:
+        #     self.write_tree_name(ad_tree)
+        #     self.generate_tree_name_block(ad_tree)
+        #
+        #     # Testing
+        #     # self.draw_frame(x,y,self.ad_width,TREE_NAME_LABEL_HEIGHT,BLACK,ad_tree.located_layer)
+        #
+        # # Generate ad_tree.missing_taxa_block and draw the block
+        # if ad_tree.missing_taxa_list:
+        #     x = ad_tree.topL.x + ad_tree.x * self.scale
+        #     y = ad_tree.botR.y - 2 * ad_tree.padding * self.scale - self.missing_taxa_height
+        #     width = ad_tree.botR.x - ad_tree.x * self.scale - x
+        #     ad_tree.missing_taxa_block = Block(Point(x,y),Point(x+width,y+self.missing_taxa_height))
+        #
+        #     self.draw_missing_taxa_block(ad_tree)
+
     def generate_tree_name_block(self,ad_tree):
         x = ad_tree.topL.x
         y = ad_tree.topL.y - TREE_NAME_LABEL_HEIGHT - DEFAULT_PADDING_BETWEEN_BLOCK
@@ -824,7 +894,7 @@ class tcCanvas(MyCanvas):
         ad_tree.tree_name_block = Block(Point(x, y), Point(x + self.ad_width, y + TREE_NAME_LABEL_HEIGHT +
                                                            DEFAULT_PADDING_BETWEEN_BLOCK))
 
-    def draw_indv_block(self,block,ad_tree):
+    def draw_indv_block(self,block,ad_tree,canvas=None):
         block.width = DEFAULT_INDV_BLOCK_WIDTH * self.scale
         if block.topL.x + block.width >= ad_tree.botR.x:
             block.botR.x = ad_tree.botR.x - 5
@@ -834,30 +904,29 @@ class tcCanvas(MyCanvas):
 
         self.draw_exact_match_block(block.topL.x, block.topL.y, block.width, block.height,
                                     block_color=color, frame_color=GREY,
-                                    layer_index=ad_tree.located_layer)
+                                    layer_index=ad_tree.located_layer,canvas=canvas)
 
-    def draw_subtree_block(self,block,ad_tree,scale_tmp):
+    def draw_subtree_block(self,block,ad_tree,scale_tmp,canvas=None,cluster=False):
         block.width = block.botR.x - block.topL.x
 
         if block.is_subtree_duplicate:
-            self.draw_duplicate_subtree_block(block)
+            self.draw_duplicate_subtree_block(block,canvas=canvas)
         else:
             # Draw subtree block
             if block.exact_match:
                 self.draw_exact_match_block(block.topL.x, block.topL.y, block.width, block.height,
                                             block_color=block.color, frame_color=BLACK,
-                                            layer_index=ad_tree.located_layer)
+                                            layer_index=ad_tree.located_layer,canvas=canvas)
             else:
-                self.draw_inexact_match_block(block)
+                self.draw_inexact_match_block(block,canvas=canvas)
 
         if block.height > 10 and block.width > 17:
-            self.write_ad_block_label(block)
+            self.write_ad_block_label(block,canvas=canvas)
 
         if block.nested_tree:
             block.nested_tree.located_layer = ad_tree.located_layer
             block.nested_tree.set_nested_tree_size(block)
-            self.draw_ad_tree(ad_tree=block.nested_tree)
-
+            self.draw_ad_tree(ad_tree=block.nested_tree,canvas=canvas,cluster=cluster)
 
     def draw_missing_taxa_block(self,ad_tree):
         block = ad_tree.missing_taxa_block
@@ -896,7 +965,7 @@ class tcCanvas(MyCanvas):
         # block : total taxa count
         return (segment/block) * height
 
-    def draw_duplicate_subtree_block(self,block):
+    def draw_duplicate_subtree_block(self,block,canvas=None):
         height = 0
         width = 0
         x = block.topL.x
@@ -918,9 +987,9 @@ class tcCanvas(MyCanvas):
             if block.exact_match[i]:
                 self.draw_rec(x, y, block.width, height,
                               color=block.color[i],
-                              layer_index=block.belong_ad_tree.located_layer)
+                              layer_index=block.belong_ad_tree.located_layer,canvas=canvas)
                 self.draw_rec_edge_absent(side=side,exact_match=True,x=x,y=y,width=block.width,height=height,
-                                          layer_index=block.belong_ad_tree.located_layer)
+                                          layer_index=block.belong_ad_tree.located_layer,canvas=canvas)
             else:
                 subtree_leaf = len(block.belong_subtree[i].leaf_set)
 
@@ -928,12 +997,12 @@ class tcCanvas(MyCanvas):
                                                      len(block.taxa_list))
                 self.draw_rec(x, y, width, height,
                               color=block.color[i],
-                              layer_index=block.belong_ad_tree.located_layer)
-                self.draw_rec_edge_absent(side=side,exact_match=False,x=x,y=y,width=block.width,height=height,layer_index=block.belong_ad_tree.located_layer)
+                              layer_index=block.belong_ad_tree.located_layer,canvas=canvas)
+                self.draw_rec_edge_absent(side=side,exact_match=False,x=x,y=y,width=block.width,height=height,layer_index=block.belong_ad_tree.located_layer,canvas=canvas)
 
             y += height
 
-    def draw_rec_edge_absent(self,side,exact_match,x,y,width,height,layer_index):
+    def draw_rec_edge_absent(self,side,exact_match,x,y,width,height,layer_index,canvas=None):
         left_vertical = [Point(x,y),Point(x,y + height)]
         right_vertical = [Point(x + width,y),Point(x + width,y + height)]
 
@@ -945,17 +1014,17 @@ class tcCanvas(MyCanvas):
             horizontal = None
 
         if exact_match:
-            self.draw_solid_line(left_vertical[0],left_vertical[1],BLACK,layer_index=layer_index)
-            self.draw_solid_line(right_vertical[0],right_vertical[1],BLACK,layer_index=layer_index)
+            self.draw_solid_line(left_vertical[0],left_vertical[1],BLACK,layer_index=layer_index,canvas=canvas)
+            self.draw_solid_line(right_vertical[0],right_vertical[1],BLACK,layer_index=layer_index,canvas=canvas)
             if horizontal:
-                self.draw_solid_line(horizontal[0],horizontal[1],BLACK,layer_index=layer_index)
+                self.draw_solid_line(horizontal[0],horizontal[1],BLACK,layer_index=layer_index,canvas=canvas)
         else:
-            self.draw_dotted_line(left_vertical[0],left_vertical[1],BLACK, line_dash_index=1,layer_index=layer_index)
-            self.draw_dotted_line(right_vertical[0],right_vertical[1],BLACK, line_dash_index=1,layer_index=layer_index)
+            self.draw_dotted_line(left_vertical[0],left_vertical[1],BLACK, line_dash_index=1,layer_index=layer_index,canvas=canvas)
+            self.draw_dotted_line(right_vertical[0],right_vertical[1],BLACK, line_dash_index=1,layer_index=layer_index,canvas=canvas)
             if horizontal:
-                self.draw_dotted_line(horizontal[0],horizontal[1],BLACK, line_dash_index=1,layer_index=layer_index)
+                self.draw_dotted_line(horizontal[0],horizontal[1],BLACK, line_dash_index=1,layer_index=layer_index,canvas=canvas)
 
-    def draw_root_internal(self,node,layer_index):
+    def draw_root_internal(self,node,layer_index,canvas=None):
         first_child = node.children[0]
         last_child = node.children[-1]
 
@@ -972,18 +1041,18 @@ class tcCanvas(MyCanvas):
 
         # Draw vertical branch linking two children
         self.draw_solid_line(Point(x, first_child.branch_head.y), Point(x, last_child.branch_head.y), BLACK,
-                             layer_index)
+                             layer_index,canvas=canvas)
 
         if node.type == ROOT:
             # Draw horizontal branch
-            self.draw_solid_line(node.branch_head, node.branch_tail, BLACK, layer_index)
+            self.draw_solid_line(node.branch_head, node.branch_tail, BLACK, layer_index,canvas=canvas)
 
         # Draw children's branches
         for child in node.children:
             if child.is_elided:
-                self.draw_elided_branch(child.branch_head, child.branch_tail, BLACK, layer_index)
+                self.draw_elided_branch(child.branch_head, child.branch_tail, BLACK, layer_index,canvas=canvas)
             else:
-                self.draw_solid_line(child.branch_head, child.branch_tail, BLACK, layer_index)
+                self.draw_solid_line(child.branch_head, child.branch_tail, BLACK, layer_index,canvas=canvas)
 
     def write_tree_name(self,ad_tree,extend = False,x=None):
         tree_name = str(ad_tree.tc_tree.id) + " : " + ad_tree.tc_tree.name
@@ -1012,10 +1081,12 @@ class tcCanvas(MyCanvas):
         # Find the clicked ad_tree
         tree_selected = self.ad_tree_filter(x,y)
 
-        self.draw_rec(x,y,10,10,RED,-1)
+        # self.draw_rec(x,y,10,10,RED,-1)
         if not tree_selected:
             return
-
+        elif tree_selected == self.tree_selected:
+            self.tree_selected = None
+            self[self.TREE_SELECTED_BLOCK_LAYER].clear()
         elif tree_selected != self.tree_selected:
             self.tree_selected = tree_selected
             self[self.TREE_SELECTED_BLOCK_LAYER].clear()
@@ -1074,11 +1145,13 @@ class tcCanvas(MyCanvas):
             if ad_tree.tree_name_block.check_in_range(Point(x,y)):
                 return ad_tree
 
-    def write_ad_block_label(self,block):
-        if self.view == AD_INDIVIDUAL:
+    def write_ad_block_label(self,block,canvas=None):
+        if not canvas and self.view == AD_INDIVIDUAL:
             layer_index = block.belong_ad_tree.located_layer
-        else:
+            canvas = self[layer_index]
+        elif not canvas:
             layer_index = self.AD_LAYER
+            canvas = self[layer_index]
 
         if block.is_subtree_duplicate:
             subtree_label = ""
@@ -1102,16 +1175,16 @@ class tcCanvas(MyCanvas):
         if self.scale <= 0.7:
             scale_tmp = 0.8
 
-        self[layer_index].font = f'{12 * scale_tmp}px Times New Romans'
+        canvas.font = f'{12 * scale_tmp}px Times New Romans'
 
         # Write subtree label on top left corner
-        self[layer_index].fill_style = BLACK
+        canvas.fill_style = BLACK
 
-        self[layer_index].fill_text(subtree_label, block.topL.x + 5,block.topL.y + (12 * scale_tmp))
+        canvas.fill_text(subtree_label, block.topL.x + 5,block.topL.y + (12 * scale_tmp))
 
         if block.width > 28 and not self.view == AD_CLUSTER :
             # Write taxa count on top right corner
-            self[layer_index].fill_text(taxa_cnt, block.botR.x - label_width, block.topL.y + (12 * scale_tmp))
+            canvas.fill_text(taxa_cnt, block.botR.x - label_width, block.topL.y + (12 * scale_tmp))
 
     def individual_block(self,subtree,type=INDIVIDUAL_BLOCK):
         #  Default size : 30x7
@@ -1141,31 +1214,51 @@ class tcCanvas(MyCanvas):
         self.ad_from_individual = False
         self.cluster_ad_list = []
 
-        self.prepare_subtree_list()
+        # self.prepare_subtree_list()
 
+        self.generate_ad_list()
         # Check if has individual_ad_canvas
-        self.ad_individual_canvas = self.adPy.ad_individual_canvas
-        if self.ad_individual_canvas:
-            if self.parameter_from_individual_ad:
-                self.get_parameter_from_individual_canvas()
-
-                if self.ad_individual_canvas.max_ad and self.ad_individual_canvas.max_ad < len(self.tc):
-                    self.generate_ad_list()
-                else:
-                    self.ad_list = self.ad_individual_canvas.ad_list
-                    self.ad_from_individual = True
-
-            elif self.check_ad_parameter(self.ad_individual_canvas) and not (self.ad_individual_canvas.max_ad and self.ad_individual_canvas.max_ad < len(self.tc)):
-                    self.ad_list = self.ad_individual_canvas.ad_list
-                    self.ad_from_individual = True
-            else:
-                self.generate_ad_list()
-        else:
-            self.generate_ad_list()
-
+        # self.ad_individual_canvas = self.adPy.ad_individual_canvas
+        # if self.ad_individual_canvas:
+        #     if self.parameter_from_individual_ad:
+        #         self.get_parameter_from_individual_canvas()
+        #
+        #         if self.ad_individual_canvas.max_ad and self.ad_individual_canvas.max_ad < len(self.tc):
+        #             self.generate_ad_list()
+        #         else:
+        #             self.ad_list = self.ad_individual_canvas.ad_list
+        #             self.ad_from_individual = True
+        #
+        #     elif self.check_ad_parameter(self.ad_individual_canvas) and not (self.ad_individual_canvas.max_ad and self.ad_individual_canvas.max_ad < len(self.tc)):
+        #             self.ad_list = self.ad_individual_canvas.ad_list
+        #             self.ad_from_individual = True
+        #     else:
+        #         self.generate_ad_list()
+        # else:
+        #     self.generate_ad_list()
 
         # Convert rt_ad to string
         # Convert ad_tree to string and save as AD_Topology
+
+        self.cluster_from_ad_list()
+        # self.generate_topology_canvas()
+
+        self.construct_cluster_ad_canvas()
+        # Testing
+        # self.get_ad_string_list()
+        # self.get_topology_list()
+
+    def topology_list_to_ad_list(self):
+        self.topology_list = sorted(self.topology_list, key=lambda x: x.tree_count, reverse=True)
+        self.cluster_ad_list = []
+        for index,topology in enumerate(self.topology_list):
+            if topology.agree_rt:
+                self.cluster_agree_rt = index
+            self.cluster_ad_list.append(topology.sample_ad_tree)
+
+    def cluster_from_ad_list(self):
+        rt_topology = self.adPy.rt.topology_string
+        self.topology_list = []
         for ad_tree in self.ad_list:
             self.inexact_block = []
             ad_string = ad_tree.ad_to_string(self,differentiate_inexact_match=self.differentiate_inexact_match)
@@ -1175,29 +1268,36 @@ class tcCanvas(MyCanvas):
                     for subtree_label in self.inexact_block:
                         topology_exist.set_block_inexact_match(subtree_label)
                 topology_exist.add_ad(ad_tree)
+                ad_tree.topology = topology_exist
             else:
                 new_topology = adPy.AD_Topology(ad_string=ad_string, sample_ad_tree=ad_tree)
-                self.topology_list.append(new_topology)
 
+                if self.differentiate_inexact_match and "[inexact]" not in ad_string:
+                    ad_string_tmp = ad_string.replace("[exact]", "")
+
+                    if ad_string_tmp == rt_topology:
+                        new_topology.agree_rt = True
+                elif not self.differentiate_inexact_match:
+                    ad_string_tmp = ad_string.replace("[inexact]", "")
+                    ad_string_tmp = ad_string_tmp.replace("[exact]", "")
+
+                    if ad_string_tmp == rt_topology:
+                        new_topology.agree_rt = True
+
+                self.topology_list.append(new_topology)
+                ad_tree.topology = new_topology
+
+    def construct_cluster_ad_canvas(self):
         self.max_ad = len(self.topology_list)
         ad_row = math.ceil(self.max_ad / self.ad_per_row)
 
-        canvas_height = (ad_row * DEFAULT_AD_HEIGHT * self.scale) + (2 * DEFAULT_PADDING_BETWEEN_AD) + ((ad_row - 1) * DEFAULT_PADDING_BETWEEN_AD)
+        canvas_height = (ad_row * DEFAULT_AD_HEIGHT * self.scale) + (2 * DEFAULT_PADDING_BETWEEN_AD) + (
+                (ad_row - 1) * DEFAULT_PADDING_BETWEEN_AD)
         self.height = canvas_height
 
         # Convert topology_list to ad_list
         self.topology_list_to_ad_list()
-        self.construct_cluster_ad_canvas()
-        # Testing
-        # self.get_ad_string_list()
-        # self.get_topology_list()
 
-    def topology_list_to_ad_list(self):
-        self.topology_list = sorted(self.topology_list, key=lambda x: x.tree_count, reverse=True)
-        for topology in self.topology_list:
-            self.cluster_ad_list.append(topology.sample_ad_tree)
-
-    def construct_cluster_ad_canvas(self):
         result = self.preprocess_ad_tree(self.cluster_ad_list)
 
         if result == SPACE_INSUFFICIENT:
@@ -1212,9 +1312,17 @@ class tcCanvas(MyCanvas):
         self.draw_ad_tree_rec(self.cluster_ad_list)
 
         for index,ad_tree in enumerate(self.cluster_ad_list):
-            self.draw_cluster_number_bar(ad_tree,self.topology_list[index].tree_count)
+            self.draw_cluster_number_bar(ad_tree,self.topology_list[index].tree_count,agree_rt=self.topology_list[
+                index].agree_rt)
             self.draw_ad_tree(ad_tree)
             self[self.AD_LAYER].flush()
+
+    def generate_topology_canvas(self):
+        for index,topology in enumerate(self.topology_list):
+            tmp_canvas = Canvas(width=self.ad_width,height=self.ad_height)
+            self.draw_ad_tree(topology.sample_ad_tree,canvas=tmp_canvas)
+            topology.ad_canvas = tmp_canvas
+            self.topology_canvas_list.append(tmp_canvas)
 
     def check_topology_exist(self,ad_string):
         for topology in self.topology_list:
@@ -1222,29 +1330,41 @@ class tcCanvas(MyCanvas):
                 return topology
         return False
 
-    def draw_cluster_number_bar(self,ad_tree,tree_count):
+    def draw_cluster_number_bar(self,ad_tree,tree_count,canvas=None,agree_rt=False):
         # Calculate position
         frame_width = ad_tree.width
         height = CLUSTER_NUMBER_BAR_HEIGHT * self.scale
-        x = ad_tree.topL.x
-        y = ad_tree.topL.y - DEFAULT_PADDING_BETWEEN_BLOCK - height
+        if canvas:
+            x = 5
+            y = 10
+        else:
+            x = ad_tree.topL.x
+            y = ad_tree.topL.y - DEFAULT_PADDING_BETWEEN_BLOCK - height
+
         color_segment_width = self.get_color_segment_width(width=frame_width,segment=tree_count,block=len(self.tc))
 
         # Draw bar
-        self.draw_rec(x, y, color_segment_width, height, LIGHT_GREY, layer_index=ad_tree.located_layer)
-        self.draw_frame(x, y, frame_width, height,BLACK, layer_index=ad_tree.located_layer)
+        self.draw_rec(x, y, color_segment_width, height, LIGHT_GREY, layer_index=ad_tree.located_layer,canvas=canvas)
+        self.draw_frame(x, y, frame_width, height, BLACK, layer_index=ad_tree.located_layer, canvas=canvas)
 
+        if not canvas:
+            canvas = self[self.AD_LAYER]
         # Write tree count
         if height > 5 and frame_width > 15:
-            self[self.AD_LAYER].font = f'{12 * self.scale}px Times New Romans'
-            self[self.AD_LAYER].fill_style = BLACK
-            self[self.AD_LAYER].fill_text(str(tree_count), x + 5, y + (12 * self.scale))
+            canvas.font = f'{12 * self.scale}px Times New Romans'
+            canvas.fill_style = BLACK
+            canvas.fill_text(str(tree_count), x + 5, y + (12 * self.scale))
 
-    def draw_exact_match_block(self,x,y,width,height,block_color,frame_color,layer_index = -1):
-        self.draw_rec(x,y,width,height,block_color,layer_index=layer_index)
-        self.draw_frame(x, y, width, height, frame_color, layer_index=layer_index)
+        if agree_rt:
+            canvas.fill_style = RED
+            canvas.fill_text("R", x + ad_tree.width - 10, y + CLUSTER_NUMBER_BAR_HEIGHT - 3)
+            canvas.fill_style = BLACK
 
-    def draw_inexact_match_block(self,block):
+    def draw_exact_match_block(self,x,y,width,height,block_color,frame_color,layer_index = -1,canvas=None):
+        self.draw_rec(x,y,width,height,block_color,layer_index=layer_index,canvas=canvas)
+        self.draw_frame(x, y, width, height, frame_color, layer_index=layer_index,canvas=canvas)
+
+    def draw_inexact_match_block(self,block,canvas=None):
         # block.topL.x, block.topL.y, block.width, block.height,block_color=block.color, frame_color=BLACK,layer_index=self.AD_LAYER
         x = block.topL.x
         y = block.topL.y
@@ -1256,24 +1376,29 @@ class tcCanvas(MyCanvas):
         else:
             segment_width = width
 
-        self.draw_rec(x, y, segment_width, height, block.color, layer_index=block.belong_ad_tree.located_layer)
-        self.draw_dotted_line(Point(x,y),Point(x+width,y),BLACK,line_dash_index=1, layer_index=block.belong_ad_tree.located_layer)
-        self.draw_dotted_line(Point(x+width,y), Point(x + width, y+height), BLACK,line_dash_index=1, layer_index=block.belong_ad_tree.located_layer)
-        self.draw_dotted_line(Point(x, y), Point(x, y+height), BLACK, line_dash_index=1,layer_index=block.belong_ad_tree.located_layer)
-        self.draw_dotted_line(Point(x, y+height), Point(x + width, y + height), BLACK,line_dash_index=1, layer_index=block.belong_ad_tree.located_layer)
+        self.draw_rec(x, y, segment_width, height, block.color, layer_index=block.belong_ad_tree.located_layer,
+                      canvas=canvas)
+        self.draw_dotted_line(Point(x,y),Point(x+width,y),BLACK,line_dash_index=1,
+                              layer_index=block.belong_ad_tree.located_layer,canvas=canvas)
+        self.draw_dotted_line(Point(x+width,y), Point(x + width, y+height), BLACK,line_dash_index=1,
+                              layer_index=block.belong_ad_tree.located_layer,canvas=canvas)
+        self.draw_dotted_line(Point(x, y), Point(x, y+height), BLACK, line_dash_index=1,
+                              layer_index=block.belong_ad_tree.located_layer,canvas=canvas)
+        self.draw_dotted_line(Point(x, y+height), Point(x + width, y + height), BLACK,line_dash_index=1,
+                              layer_index=block.belong_ad_tree.located_layer,canvas=canvas)
 
     # General function
     def draw_ad_tree_rec(self,ad_list):
         for index,ad_tree in enumerate(ad_list):
-            self.draw_frame(ad_tree.topL.x,ad_tree.topL.y,ad_tree.width,ad_tree.height,BLACK,ad_tree.located_layer)
+            self.draw_frame(ad_tree.topL.x,ad_tree.topL.y,ad_tree.width,ad_tree.height,GREY,ad_tree.located_layer)
 
     def display_content_exceed_error(self):
         print("<Warning> : Excessive display content.")
         print(f"Scale has been automatically adjusted to {self.scale}.")
 
     def check_ad_parameter(self,canvas):
-        if (self.context_level == canvas.context_level and self.adPy.subtree_list == canvas.subtree_list and
-                self.espace_taxa_as_context_block == canvas.espace_taxa_as_context_block and self.subtree_independent ==
+        if (self.context_level == canvas.context_level and
+                self.escape_taxa_as_context_block == canvas.escape_taxa_as_context_block and self.subtree_independent ==
                 canvas.subtree_independent and self.show_block_proportional == canvas.show_block_proportional and
                 self.scale == canvas.scale):
             return True
@@ -1292,7 +1417,7 @@ class tcCanvas(MyCanvas):
     def get_parameter_from_individual_canvas(self):
         self.scale = self.ad_individual_canvas.scale
         self.context_level = self.ad_individual_canvas.context_level
-        self.espace_taxa_as_context_block = self.ad_individual_canvas.espace_taxa_as_context_block
+        self.escape_taxa_as_context_block = self.ad_individual_canvas.escape_taxa_as_context_block
         self.show_block_proportional = self.ad_individual_canvas.show_block_proportional
         self.subtree_independent = self.subtree_independent
 

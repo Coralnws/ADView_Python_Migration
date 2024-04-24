@@ -1,29 +1,26 @@
 import copy
-
+import re
 import dendropy
 from Utils import *
-from ipycanvas import Canvas
+from ipycanvas import Canvas,hold_canvas
 from IPython.display import display
 import os
 import myCanvas as myCanvas
 import rtCanvas as rtCanvas
 import tcCanvas as tcCanvas
+import treeDistributionView as treeDistributionView
 import pairwiseCanvas as pairwiseCanvas
 import importlib
 importlib.reload(rtCanvas)
 importlib.reload(tcCanvas)
+importlib.reload(treeDistributionView)
 import math
 import numpy as np
 import plotly.express as px
-from sklearn.manifold import MDS
-import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
 
 
 class ADpy:
-    # Testing
-    output = []
-    output2 = ""
 
     def __init__(self,treefile = None,type="newick"):
         # Reference Tree related
@@ -46,19 +43,22 @@ class ADpy:
         self.ad_cluster_canvas = None # Cluster ADs' Canvas
         self.individual_canvas_parameters = {}   # { 'parameter_name' : value }
         self.cluster_canvas_parameters = {}
+        self.tree_distribution_tmp = None
+        self.tc_canvas_tmp = None
         self.ad_parameter_alter = True # Record whether ad_canvas's parameter change
+
+        self.tree_distribution_view = None
+
 
         # Paiwise canvas related
         self.pairwise_canvas = None
-
-
         self.default_subtree_attribute()
         # Reaf tree file and construct reference tree
         self.read_rt(treefile = treefile, type = type)
 
 
     #####  Public Functions ####
-    def reference_tree(self,view_support=False):
+    def reference_tree(self,view_support=False,show=True):
         # Calculate height of canvas
         height = get_leaf_node_amount(self.rt) * RT_Y_INTERVAL + RT_Y_INTERVAL
 
@@ -71,7 +71,8 @@ class ADpy:
         if self.check_parameter_alter(view_support):
             self.create_pairwise_rt_canvas(alter_type=RT)
 
-        return self.rt_canvas
+        if show:
+            return self.rt_canvas
 
 
     def set_outgroup(self,outgroup_taxon):
@@ -94,6 +95,7 @@ class ADpy:
                 self.generate_tree_distance_matrix()
 
         self.rt_alter = True
+        self.ad_parameter_alter = True
 
     def add_tree_collection(self,treefile=None,type="newick",namefile=None):
         self.tc = dendropy.TreeList.get_from_path(treefile, schema=type,taxon_namespace = self.rt.taxon_namespace)
@@ -145,9 +147,8 @@ class ADpy:
         nodes_list = []
         subtree_root = None
 
-        if not self.rt_canvas:
-            self.rt_not_exist_error()
-            return
+        if not self.rt_canvas and not self.pairwise_canvas:
+            self.create_pairwise_rt_canvas()
 
         # Approximate taxon name
         for node in nodes:
@@ -161,34 +162,39 @@ class ADpy:
 
         subtree_root = self.rt.mrca(taxon_labels=nodes_list)
 
-        if self.rt_canvas:
-            self.rt_canvas.draw_subtree_block(subtree_root)
+        self.select_subtree_from_tree(subtree_root)
+        # if self.rt_canvas:
+        #     self.rt_canvas.draw_subtree_block(subtree_root)
 
     # Same effect as click on the leaf_node
     def select_taxa(self, node=None):
         if not self.rt_canvas:
-            self.rt_not_exist_error()
+            self.not_exist_error(tree="Reference Tree",pre_function="reference_tree()")
             return
 
         # Approximate taxon name
         for leaf_node in self.rt.leaf_node_iter():
             if node.lower() in leaf_node.taxon.label.lower():
-                if self.rt_canvas:
-                    self.rt_canvas.draw_subtree_block(leaf_node)
+                self.select_subtree_from_tree(leaf_node)
+                # if self.rt_canvas:
+                #     self.rt_canvas.draw_subtree_block(leaf_node)
 
         # Exact taxon name
         # node = self.rt.find_node_with_taxon_label(node)
         # self.rt_canvas.draw_subtree_block(node)
 
     # Show AD, default: show individual AD
-    def AD(self,view=AD_INDIVIDUAL,scale=1.0,max_ad=None,context_level=2,ad_interval=[],tree_id=None,
-           tree_name=None,filter=INCLUDE,sort=RF_DISTANCE,espace_taxa_as_context_block=True,show_block_proportional=True,
+    def AD(self,view=AD_INDIVIDUAL,scale=1.0,max_ad=None,context_level=2,ad_interval=None,tree_id=None,
+           tree_name=None,filter=INCLUDE,sort=RF_DISTANCE,escape_taxa_as_context_block=True,show_block_proportional=True,
            subtree_independent=False,parameter_from_individual_ad=True,differentiate_inexact_match=True,
-           show_tree_name=False):
+           show_tree_name=False,export=False):
+
+        if not self.tc:
+            self.not_exist_error(tree="Tree Collection",pre_function="add_tree_collection()")
 
         first_ad = None
         last_ad = None
-        if len(ad_interval) > 0:
+        if ad_interval:
             first_ad = ad_interval[0]
             last_ad = ad_interval[1]
 
@@ -198,7 +204,6 @@ class ADpy:
             tree_id = new_list
         if tree_name and type(tree_name) is not list:
             tree_name = [tree_name]
-
 
         # Check if condition is logical
         # 1. First_ad < last_ad
@@ -215,27 +220,27 @@ class ADpy:
             self.parameter_error("ad_interval")
             return
         # 4. tree_id > 0
-        if tree_id:
+        if tree_id is not None:
             for check_id in tree_id:
                 if check_id <= 0:
                     self.parameter_error("tree_id")
-            return
+                    return
         # 5. context_level >= 1
         if context_level < 1:
             self.parameter_error("context_level")
             return
+
         # Parameter: width, height, context levels, show labels, show colors
         if scale != 1.0:
             ad_per_row = (CANVAS_MAX_WIDTH - (3 * DEFAULT_PADDING_BETWEEN_AD)) // (DEFAULT_AD_WIDTH * scale)
             if scale < 0.5:
                 ad_per_row *= 3
-
         else:
             ad_per_row = DEFAULT_AD_PER_ROW
 
         if view == AD_INDIVIDUAL:
-            # if not self.ad_individual_canvas or self.parameter_modified():
-            if not self.ad_individual_canvas or self.ad_parameter_alter:
+            # if not self.ad_individual_canvas or self.parameter_modified()
+            if not self.ad_individual_canvas or self.ad_parameter_alter or export:
                 if max_ad:
                     ad_row = math.ceil(max_ad / ad_per_row)
                 else:
@@ -243,36 +248,74 @@ class ADpy:
 
                 canvas_height = (ad_row * DEFAULT_AD_HEIGHT * scale) + (2 * DEFAULT_PADDING_BETWEEN_AD) +  ((ad_row -
                                                                                                              1) * DEFAULT_PADDING_BETWEEN_AD)
-                self.ad_individual_canvas = tcCanvas.tcCanvas(layer = ad_row,adPy=self,view=view,
-                                                              width=CANVAS_MAX_WIDTH,
-                                                              height=canvas_height, scale=scale,max_ad=max_ad,
-                                                              ad_per_row=ad_per_row, context_level=context_level,
-                                                              first_ad=first_ad, last_ad=last_ad,tree_id=tree_id,
-                                                              tree_name=tree_name, sort_by=sort,
-                                                              espace_taxa_as_context_block=espace_taxa_as_context_block,
-                                                              show_block_proportional=show_block_proportional,
-                                                              subtree_independent=subtree_independent,show_tree_name=show_tree_name)
+                if export:
+                    self.ad_individual_canvas_export = tcCanvas.tcCanvas(layer = ad_row,adPy=self,view=view,
+                                                                  width=CANVAS_MAX_WIDTH,
+                                                                  height=canvas_height, scale=scale,max_ad=max_ad,
+                                                                  ad_per_row=ad_per_row, context_level=context_level,
+                                                                  first_ad=first_ad, last_ad=last_ad,tree_id=tree_id,
+                                                                  tree_name=tree_name, sort_by=sort,
+                                                                  escape_taxa_as_context_block=escape_taxa_as_context_block,
+                                                                  show_block_proportional=show_block_proportional,
+                                                                  subtree_independent=subtree_independent,show_tree_name=show_tree_name)
+
+                    self.ad_individual_canvas_export.TREE_NAME_LAYER = -3
+                    display(self.ad_individual_canvas_export)
+                    for index, ad_tree in enumerate(self.ad_individual_canvas_export.ad_list):
+                        with hold_canvas(self.ad_individual_canvas_export):
+                            self.ad_individual_canvas_export.paste_ad_tree_canvas(ad_tree)
+                            # self.ad_individual_canvas_export.draw_ad_tree(ad_tree)
+                        self.ad_individual_canvas_export[ad_tree.located_layer].flush()
+
+                else:
+                    self.ad_individual_canvas = tcCanvas.tcCanvas(layer = ad_row,adPy=self,view=view,
+                                                                  width=CANVAS_MAX_WIDTH,
+                                                                  height=canvas_height, scale=scale,max_ad=max_ad,
+                                                                  ad_per_row=ad_per_row, context_level=context_level,
+                                                                  first_ad=first_ad, last_ad=last_ad,tree_id=tree_id,
+                                                                  tree_name=tree_name, sort_by=sort,
+                                                                  escape_taxa_as_context_block=escape_taxa_as_context_block,
+                                                                  show_block_proportional=show_block_proportional,
+                                                                  subtree_independent=subtree_independent,show_tree_name=show_tree_name)
+                    display(self.ad_individual_canvas)
+                # # for layer in range(0, self.ad_individual_canvas.layer):
+                    for index, ad_tree in enumerate(self.ad_individual_canvas.ad_list):
+                        with hold_canvas(self.ad_individual_canvas):
+                            self.ad_individual_canvas.paste_ad_tree_canvas(ad_tree)
+                        # with hold_canvas(self.ad_individual_canvas):
+                        #     self.ad_individual_canvas.draw_ad_tree(ad_tree)
+                        self.ad_individual_canvas[ad_tree.located_layer].flush()
+            else:
                 display(self.ad_individual_canvas)
-                # for layer in range(0, self.ad_individual_canvas.layer):
-                for index, ad_tree in enumerate(self.ad_individual_canvas.ad_list):
-                    self.ad_individual_canvas.draw_ad_tree(ad_tree)
-                    self.ad_individual_canvas[ad_tree.located_layer].flush()
 
                 # return self.ad_individual_canvas
 
         # Parameter: differentiate inexact match, differentiate sister-group relationships
         elif view == AD_CLUSTER:
-            if not self.ad_cluster_canvas or self.ad_parameter_alter:
-                self.ad_cluster_canvas = tcCanvas.tcCanvas(adPy=self,view=view,width=CANVAS_MAX_WIDTH,height=150,
+            if not self.ad_cluster_canvas or self.ad_parameter_alter or export:
+                if export:
+                    self.ad_cluster_canvas_export = tcCanvas.tcCanvas(adPy=self,view=view,width=CANVAS_MAX_WIDTH,height=150,
                                                            scale=scale,context_level=context_level,
                                                            ad_per_row=ad_per_row,
                                                            show_block_proportional=show_block_proportional,
                                                            subtree_independent=subtree_independent,
-                                                           parameter_from_individual_ad=parameter_from_individual_ad,
-                                                           espace_taxa_as_context_block=espace_taxa_as_context_block,
+                                                           parameter_from_individual_ad=False,
+                                                           escape_taxa_as_context_block=escape_taxa_as_context_block,
                                                            differentiate_inexact_match=differentiate_inexact_match)
+                else:
+                    self.ad_cluster_canvas = tcCanvas.tcCanvas(adPy=self,view=view,width=CANVAS_MAX_WIDTH,height=150,
+                                                               scale=scale,context_level=context_level,
+                                                               ad_per_row=ad_per_row,
+                                                               show_block_proportional=show_block_proportional,
+                                                               subtree_independent=subtree_independent,
+                                                               parameter_from_individual_ad=parameter_from_individual_ad,
+                                                               escape_taxa_as_context_block=escape_taxa_as_context_block,
+                                                               differentiate_inexact_match=differentiate_inexact_match)
 
                 return self.ad_cluster_canvas
+            else:
+                return self.ad_cluster_canvas
+
 
     def tree_distance(self):
         # self.tree_distance_matrix = np.random.rand(69, 69)
@@ -285,8 +328,6 @@ class ADpy:
 
         tsne = TSNE(n_components=2)
         self.tree_point_coordinates = tsne.fit_transform(self.tree_distance_matrix)
-        # self.tree_point_coordinates -= self.tree_point_coordinates.min(axis=0)
-        # self.tree_point_coordinates = self.tree_point_coordinates.astype(np.float_)
 
         self.x_coor = []
         self.y_coor = []
@@ -311,12 +352,6 @@ class ADpy:
         fig.update_layout(dragmode=False,showlegend=False,width=600, height=600,plot_bgcolor=TREE_NAME_BG,xaxis=dict(
             color=BLANK),yaxis=dict(color=BLANK))
 
-        # fig = px.scatter(x=self.tree_point_coordinates[:, 0], y=self.tree_point_coordinates[:, 1], color=color,
-        #                  title='Tree Distance')
-        # fig.update_layout(showlegend=False)
-        # fig.update_traces(text=id_name, hoverinfo='text', hovertemplate='%{text}')
-
-
         fig.show()
 
     def remove_taxa(self,tree,taxa_list=None):
@@ -337,17 +372,220 @@ class ADpy:
         if not self.rt_canvas and not self.pairwise_canvas:
             self.create_pairwise_rt_canvas()
 
-        if self.tc:
+        compare_between_tc = False
+        if compare_tree:
+            if type(compare_tree) is list:
+                compare_tree = [self.tc[compare_tree[0]-1],self.tc[compare_tree[1]-1]]
+                compare_between_tc = True
+            else:
+                compare_tree = self.tc[compare_tree - 1]
+        elif self.ad_individual_canvas.tree_selected:
+            compare_tree = self.ad_individual_canvas.tree_selected.tc_tree
+
+        elif self.tc:
             compare_tree = self.tc[1]
-        # 36
 
-        self.pairwise_canvas.compare_tc_tree(compare_tree)
+        display(self.pairwise_canvas)
+        self.pairwise_canvas.compare_tc_tree(compare_tree,compare_between_tc=compare_between_tc)
 
-        return self.pairwise_canvas
 
-    def tree_distribution_view(self):
-        print(self.subtree_list)
-        self.tree_distribution_view = tcCanvas.tcCanvas(adPy=self, view=GET_TREE_DISTRIBUTION)
+    def tree_distribution(self,test=False):
+        self.rt_canvas.clear_subtree_compare_canvas()
+        self.tc_canvas_tmp = tcCanvas.tcCanvas(adPy=self, view=TREE_DISTRIBUTION, subtree_independent=False)
+
+        self.tree_distribution_view = treeDistributionView.TreeDistributionView(adPy=self,
+                                                                                tc_canvas_tmp=self.tc_canvas_tmp,
+                                                                                test=test)
+
+    def export_image(self,filename='new_image',filetype='png',view=RT,tree_id=None,tree_name=None,ad_interval=None,
+                     context_level=2,
+                     sort_by=ID,show_tree_name=None,scale=1.0,escape_taxa_as_context_block=True,show_block_proportional=True,
+           subtree_independent=False,differentiate_inexact_match=True,max_ad=None):
+
+        if not self.check_alphanumeric_underscore(filename):
+            self.filename_error()
+            return
+
+        self.image_name = filename
+        self.image_type = filetype
+
+        if view == RT:
+            self.export_canvas = self.get_rt_canvas_image()
+
+        if view == AD_INDIVIDUAL:
+            if not self.ad_individual_canvas or self.check_ad_parameter(tree_id=tree_id,tree_name=tree_name,\
+                    ad_interval=ad_interval,
+                     sort_by=sort_by,show_tree_name=show_tree_name,scale=scale,
+                                       escape_taxa_as_context_block=escape_taxa_as_context_block,
+                                       show_block_proportional=show_block_proportional,
+                                       subtree_independent=subtree_independent,context_level=context_level,
+                                                                        max_ad=max_ad) == CHANGED:
+
+                self.AD(view=AD_INDIVIDUAL,tree_id=tree_id,tree_name=tree_name,ad_interval=ad_interval,
+                     sort=sort_by,show_tree_name=show_tree_name,scale=scale,
+                                       escape_taxa_as_context_block=escape_taxa_as_context_block,
+                                       show_block_proportional=show_block_proportional,
+                                       subtree_independent=subtree_independent,context_level=context_level,
+                        max_ad=max_ad,export=True)
+
+            self.export_canvas = self.get_ad_canvas_image()
+
+
+        if view == AD_CLUSTER:
+            if not self.ad_cluster_canvas or self.check_cluster_parameter(scale=scale,context_level=context_level,
+                                       escape_taxa_as_context_block=escape_taxa_as_context_block,
+                                       show_block_proportional=show_block_proportional,
+                                       subtree_independent=subtree_independent,
+                                            differentiate_inexact_match=differentiate_inexact_match) == CHANGED:
+                self.AD(view=AD_CLUSTER,scale=scale,context_level=context_level,
+                                       escape_taxa_as_context_block=escape_taxa_as_context_block,
+                                       show_block_proportional=show_block_proportional,
+                                       subtree_independent=subtree_independent,
+                                            differentiate_inexact_match=differentiate_inexact_match,export=True)
+
+            self.export_canvas = self.get_cluster_canvas_image()
+
+        if view == TREE_DISTRIBUTION:
+            if not self.tree_distribution_view or not self.tree_distribution_view.export_ready:
+                self.not_exist_error("Tree Distribution View","tree_distribution()")
+
+            self.export_canvas = self.get_tree_distribution_image()
+
+
+        self.export_canvas.observe(self.save_to_file, "image_data")
+
+    ##-------------------------- Internal Functions -----------------------------
+    
+    # Ready canvas for tree dirstribution
+    def get_tree_distribution_image(self):
+        view_tmp = self.tree_distribution_view
+        total_height = (view_tmp.nodes_list_canvas.height + view_tmp.related_tc_tree_canvas.height +
+                               view_tmp.cluster_canvas.height + DEFAULT_PADDING_BETWEEN_AD * 2)
+
+        if total_height < view_tmp.rt_subtree_block_canvas.height:
+            total_height = view_tmp.rt_subtree_block_canvas.height
+
+        total_height += 50
+        total_width = view_tmp.nodes_list_canvas.width + view_tmp.rt_subtree_block_canvas.width + 50
+
+        tree_distribution_canvas = Canvas(width=total_width,height=total_height,sync_image_data=True)
+        tree_distribution_canvas.fill_style = BLANK
+        tree_distribution_canvas.fill_rect(0,0,total_width,tree_distribution_canvas.height)
+        subtree_chosen = view_tmp.subtree_chosen
+
+        if view_tmp.agree_rt:
+            label_str = (f"This cluster(#trees={view_tmp.segment_button_clicked.description}) agrees with branch"
+                         f" {subtree_chosen.label} in the reference tree.")
+        else:
+            label_str = (f"This cluster(#trees={view_tmp.segment_button_clicked.description}) disagrees with branch"
+                         f" {subtree_chosen.label} in the reference tree.")
+
+        pointer_x = 20
+        pointer_y = 20
+        rt_subtree_block_canvas_x = pointer_x + view_tmp.nodes_list_canvas.width + 10
+        tree_distribution_canvas.fill_style = BLACK
+        tree_distribution_canvas.font = f'18px Times New Roman'
+        tree_distribution_canvas.fill_text(label_str,pointer_x,pointer_y)
+
+        pointer_y += 20
+        tree_distribution_canvas.draw_image(view_tmp.nodes_list_canvas,pointer_x,pointer_y)
+        tree_distribution_canvas.draw_image(view_tmp.rt_subtree_block_canvas, rt_subtree_block_canvas_x, pointer_y)
+        pointer_y += view_tmp.nodes_list_canvas.height + 10
+
+        tree_distribution_canvas.draw_image(view_tmp.related_tc_tree_canvas, pointer_x, pointer_y)
+        pointer_y += view_tmp.related_tc_tree_canvas.height + 10
+
+        tree_distribution_canvas.draw_image(view_tmp.cluster_canvas, pointer_x, pointer_y)
+        pointer_y += view_tmp.cluster_canvas.height + 10
+
+        return tree_distribution_canvas
+
+    def check_ad_parameter(self,tree_id=None,tree_name=None,ad_interval=None,scale=1.0,
+                     sort_by=None,show_tree_name=None,escape_taxa_as_context_block=True,show_block_proportional=True,
+           subtree_independent=False,context_level=2,max_ad=None):
+        canvas = self.ad_individual_canvas
+        if not tree_id and not tree_name and not ad_interval and not sort_by and not show_tree_name and not max_ad:
+            if (not canvas.target_tc_tree_index and not canvas.target_tc_tree_name and not canvas.first_ad and not
+            canvas.last_ad and not canvas.sort_by and not canvas.show_tree_name):
+                if (context_level == canvas.context_level and scale == canvas.scale and escape_taxa_as_context_block ==
+                        canvas.escape_taxa_as_context_block and
+                        show_block_proportional ==
+                        canvas.show_block_proportional and subtree_independent == canvas.subtree_independent):
+
+                    return NO_CHANGE
+                else:
+                    return CHANGED
+            else:
+                return CHANGED
+
+        if tree_id and tree_id != canvas.target_tc_tree_index:
+            return CHANGED
+
+        if tree_name and tree_name != canvas.target_tc_tree_name:
+            return CHANGED
+
+        if ad_interval and ad_interval[0] != canvas.first_ad and ad_interval[1] != canvas.last_ad:
+            return CHANGED
+
+        if sort_by and sort_by != canvas.sort_by:
+            return CHANGED
+
+        if show_tree_name and show_tree_name != canvas.show_tree_name:
+            return CHANGED
+
+        if max_ad and max_ad != canvas.max_ad:
+            return CHANGED
+
+    def check_cluster_parameter(self, context_level=2,scale=1.0,escape_taxa_as_context_block=True,show_block_proportional=True,
+           subtree_independent=False,differentiate_inexact_match=True):
+        canvas = self.ad_cluster_canvas
+
+        if (context_level == canvas.context_level and scale == canvas.scale and escape_taxa_as_context_block ==
+                canvas.escape_taxa_as_context_block and show_block_proportional == canvas.show_block_proportional and
+                subtree_independent == canvas.subtree_independent and differentiate_inexact_match == canvas.differentiate_inexact_match):
+
+            return NO_CHANGE
+        else:
+            return CHANGED
+
+    # Ready canvas for cluster ad
+    def get_cluster_canvas_image(self):
+        cluster_export_canvas = Canvas(width=self.ad_cluster_canvas_export.width, height=
+        self.ad_cluster_canvas_export.height, sync_image_data=True)
+        cluster_export_canvas.fill_style = BLANK
+        cluster_export_canvas.fill_rect(0, 0, cluster_export_canvas.width, cluster_export_canvas.height)
+        cluster_export_canvas.draw_image(self.ad_cluster_canvas_export[-3], 0, 0)
+        return cluster_export_canvas
+
+    # Ready canvas for tree collection ad
+    def get_ad_canvas_image(self):
+        ad_export_canvas = Canvas(width=self.ad_individual_canvas_export.width,height =
+        self.ad_individual_canvas_export.height,sync_image_data=True)
+        ad_export_canvas.fill_style = BLANK
+        ad_export_canvas.fill_rect(0, 0, ad_export_canvas.width, ad_export_canvas.height)
+        ad_export_canvas.draw_image(self.ad_individual_canvas_export[-3],0,0)
+
+        return ad_export_canvas
+
+    #  Ready canvas for rt export
+    def get_rt_canvas_image(self):
+        rt_canvas_image = Canvas(width = self.rt_canvas.width,height = self.rt_canvas.height,sync_image_data=True)
+        rt_canvas_image.fill_style = BLANK
+        rt_canvas_image.fill_rect(0,0,self.rt_canvas.width,self.rt_canvas.height)
+        for i in range(6):
+            rt_canvas_image.draw_image(self.rt_canvas[i],0,0)
+
+        rt_canvas_image.draw_image(self.rt_canvas[-1], 0, 0)
+
+        return rt_canvas_image
+
+    def save_to_file(self):
+        # self.export_canvas.to_file("save_file.png")
+        self.export_canvas.to_file(f"{self.image_name}.{self.image_type}")
+
+    def print_tree_distribution(self):
+        if not self.ad_individual_canvas and not self.ad_cluster_canvas and not self.tree_distribution_tmp:
+            tmp = tcCanvas.tcCanvas(adPy=self, view=TREE_DISTRIBUTION)
 
         for subtree in self.subtree_list:
             print(f"Subtree {subtree.label}")
@@ -358,7 +596,6 @@ class ADpy:
                 print(topology)
                 index += 1
 
-        #### Internal Functions ####
     def read_rt(self,treefile,type):
         self.rt = dendropy.Tree.get(path=treefile, schema=type)
 
@@ -427,7 +664,6 @@ class ADpy:
                             node.exact_match += 1
                             node.exact_match_tree.append(tree)
 
-
     def get_similarity(self,target_set,node,tc_node):
         if tc_node.is_leaf():
             tc_node.card = 0 if tc_node.taxon.label in self.rt.missing else 1
@@ -453,13 +689,32 @@ class ADpy:
 
         return False
 
-    def rt_not_exist_error(self):
-        print("<Error> : Reference Tree not exist.")
-        print("Please ensure that you have called the reference_tree() function before calling this function.")
+    def not_exist_error(self,tree,pre_function):
+        print(f"<Error> : {tree} Not Exist.")
+        print(f"Please ensure that you have called the {pre_function} function before calling this function.")
 
     def parameter_error(self,parameter):
         print(f"<Error> : {parameter} given was incorrect.")
         print("Please ensure that the information provided is logical.")
+
+    def no_tree_chosen_error(self,parameter):
+        print(f"<Error> : No tree was chosen nor given.")
+        print("Please choose a tree from AD() OR provide tree id/tree name.")
+
+    def filename_error(self):
+        print(f"<Error> : Please ensure that the filename contains only alphanumeric characters and underscores.")
+
+
+    def check_alphanumeric_underscore(self,str):
+        # 定义正则表达式模式，表示字符串只包含字母、数字和下划线
+        pattern = r'^[a-zA-Z0-9_]+$'
+        # 使用 re.match() 函数进行匹配
+        if re.match(pattern, str):
+            return True
+        else:
+            return False
+
+
 
     # Manage Subtree
     def default_subtree_attribute(self):
@@ -495,6 +750,7 @@ class ADpy:
 
     def select_subtree_from_tree(self,node_selected):
         if not hasattr(node_selected, 'selected') or node_selected.selected == False:
+            self.ad_parameter_alter = True
             # Ignore if 5 subtree had selected
             if len(self.subtree_list) >= 5:
                 return None
@@ -518,12 +774,14 @@ class ADpy:
 
             self.rt_canvas.draw_subtree_block(node_selected,new_subtree)
             self.subtree_list.append(new_subtree)
-            self.pairwise_canvas.draw_subtree_block(node_selected,select_tree=RT,new_subtree=new_subtree)
+            self.pairwise_canvas.draw_subtree_block(node_selected,select_tree=RT,new_subtree=new_subtree,align=LEFT)
 
             if self.pairwise_canvas.tc_tree:
-                self.pairwise_canvas.draw_tc_subtree_block(new_subtree)
-                self.pairwise_canvas.draw_escape_taxa()
-
+                self.pairwise_canvas.draw_tc_subtree_block(new_subtree,align=RIGHT)
+                self.pairwise_canvas.draw_escape_taxa(align=RIGHT)
+                if self.pairwise_canvas.compare_between_tc:
+                    self.pairwise_canvas.draw_tc_subtree_block(new_subtree,align=LEFT)
+                    self.pairwise_canvas.draw_escape_taxa(align=LEFT)
 
             # return new_subtree
 
@@ -547,6 +805,13 @@ class ADpy:
             # if len(self.subtree_list) == 0:
             #     self.rt_canvas.reset_subtree_canvas()
             #     self.pairwise_canvas.reset_subtree_canvas()
+
+    def get_subtree(self,label):
+        for subtree in self.subtree_list:
+            if subtree.label == label:
+                return subtree
+
+
 
 
 class Subtree:
@@ -581,15 +846,20 @@ class Subtree:
     def check_and_set_topology(self,root,tc_tree_id,type=NODE_DIFFERENCE):
         if type == TOPOLOGY_DIFFERENCE:
             subtree_string = self.subtree_to_string(root)
+
         elif type == NODE_DIFFERENCE:
             children = [child.taxon.label for child in root.leaf_nodes()]
+            nodes_list = root.leaf_nodes()
             children = sorted(children)
             subtree_string = ",".join(children)
 
-        if subtree_string not in self.topology_list:
-            self.topology_list[f"{subtree_string}"] = []
+        if tc_tree_id == 0:
+            return
 
-        self.topology_list[f"{subtree_string}"].append(tc_tree_id)
+        if subtree_string not in self.topology_list:
+            self.topology_list[f"{subtree_string}"] = [nodes_list,[]]
+
+        self.topology_list[f"{subtree_string}"][1].append(tc_tree_id)
 
     def set_rtLayer(self, rtCanvas_index):
         self.rtCanvas_index = rtCanvas_index
@@ -749,8 +1019,7 @@ class AD_Tree:
 
         return taxa_cnt
 
-    def ad_to_string(self, canvas,node=None, differentiate_inexact_match=True):
-
+    def ad_to_string(self, canvas,node=None, differentiate_inexact_match=True,is_rt=False):
         if node == None:
             node = self.root
             newick_str = ""
@@ -776,7 +1045,7 @@ class AD_Tree:
             else:
                 return '(' + newick_str[:-1] + ')' + self.get_node_type(canvas,node,differentiate_inexact_match=differentiate_inexact_match)
 
-    def get_node_type(self, canvas,node,differentiate_inexact_match=True):
+    def get_node_type(self, canvas,node,differentiate_inexact_match=True,is_rt=False):
         if node.type == LEAF:
             block = node.node_or_block
             if block.type == SUBTREE_BLOCK:
@@ -820,8 +1089,6 @@ class AD_Tree:
 
 
 
-
-
 class AD_Node:
     def __init__(self, node_or_block, x_level, type, child_index, type_prior):
         self.node_or_block = node_or_block  # Dendropy node if internal node, AD_Block if leaf
@@ -861,6 +1128,7 @@ class AD_Topology:
         self.tree_count = 1
         self.block_list = []
         self.generate_block_list()
+        self.agree_rt = False
 
     def add_ad(self, ad_tree):
         self.ad_tree_list.append(ad_tree)

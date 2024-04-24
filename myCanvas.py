@@ -9,56 +9,88 @@ class MyCanvas(MultiCanvas):
     line_dashes = [[2, 2], [5, 5], [8, 8], [10, 10]]
 
     def __init__(self,layer,width, height):
-        super().__init__(layer,width = width, height = height)
+        super().__init__(layer,width = width, height = height, sync_image_data=True)
         self.layer = layer
 
-    def draw_dots(self,x,y,layer_index = -1):
-        self[layer_index].fill_style = RED
-        self[layer_index].fill_circle(x, y, 1)
-        self[layer_index].fill_style = BLACK
+    def draw_dots(self,x,y,layer_index = -1,canvas=None):
+        if not canvas:
+            canvas = self[layer_index]
+        canvas.fill_style = RED
+        canvas.fill_circle(x, y, 1)
+        canvas.fill_style = BLACK
 
-    def draw_solid_line(self,head,tail,color,layer_index = -1):
-        self[layer_index].stroke_style = color
-        self[layer_index].begin_path()
-        self[layer_index].move_to(head.x, head.y)
-        self[layer_index].line_to(tail.x,tail.y)
-        self[layer_index].stroke()
+    def draw_solid_line(self,head,tail,color,layer_index = -1,canvas=None):
+        if not canvas:
+            canvas = self[layer_index]
+        canvas.stroke_style = color
+        canvas.begin_path()
+        canvas.move_to(head.x, head.y)
+        canvas.line_to(tail.x,tail.y)
+        canvas.stroke()
 
-    def draw_dotted_line(self,head,tail,color,line_dash_index=0,layer_index = -1):
-        self[layer_index].stroke_style = color
-        self[layer_index].set_line_dash(self.line_dashes[line_dash_index])
-        self[layer_index].begin_path()
-        self[layer_index].move_to(head.x, head.y)
-        self[layer_index].line_to(tail.x,tail.y)
-        self[layer_index].stroke()
+    def draw_dotted_line(self,head,tail,color,line_dash_index=0,layer_index = -1,canvas=None):
+        if not canvas:
+            canvas = self[layer_index]
+        canvas.stroke_style = color
+        canvas.set_line_dash(self.line_dashes[line_dash_index])
+        canvas.begin_path()
+        canvas.move_to(head.x, head.y)
+        canvas.line_to(tail.x,tail.y)
+        canvas.stroke()
 
-        self[layer_index].set_line_dash([])
+        canvas.set_line_dash([])
 
     # Draw rectangle on specific layer
-    def draw_rec(self,x,y,width,height,color,layer_index = -1):
-        self[layer_index].fill_style = color
-        self[layer_index].fill_rect(x, y, width,height)
+    def draw_rec(self,x,y,width,height,color,layer_index = -1,canvas=None):
+        if not canvas:
+            canvas = self[layer_index]
+        canvas.fill_style = color
+        canvas.fill_rect(x, y, width,height)
 
-    def draw_frame(self,x,y,width,height,color,layer_index = -1):
-        self[layer_index].stroke_style = color
-        self[layer_index].stroke_rect(x, y, width, height)
+    def draw_frame(self,x,y,width,height,color,layer_index = -1,canvas=None):
+        if not canvas:
+            canvas = self[layer_index]
+        canvas.stroke_style = color
+        canvas.stroke_rect(x, y, width, height)
 
-    def draw_dotted_frame(self,x,y,width,height,color,line_dash_index=0,layer_index = -1):
-        self[layer_index].stroke_style = color
-        self[layer_index].set_line_dash(self.line_dashes[line_dash_index])
-        self[layer_index].stroke_rect(x, y, width, height)
+    def draw_dotted_frame(self,x,y,width,height,color,line_dash_index=0,layer_index = -1,canvas=None):
+        if not canvas:
+            canvas = self[layer_index]
+        canvas.stroke_style = color
+        canvas.set_line_dash(self.line_dashes[line_dash_index])
+        canvas.stroke_rect(x, y, width, height)
 
-        self[layer_index].set_line_dash([])
+        canvas.set_line_dash([])
 
-    def draw_elided_branch(self,head,tail,color,layer_index = -1):
-        self.draw_dotted_line(head,tail,color,line_dash_index=0,layer_index=layer_index)
+    def draw_elided_branch(self,head,tail,color,layer_index = -1,canvas=None):
+        self.draw_dotted_line(head,tail,color,line_dash_index=0,layer_index=layer_index,canvas=canvas)
 
         x = head.x + (tail.x - head.x) / 2
         y = tail.y - 5
         start_point = Point(x + 1,y)
         end_point = Point(x - 2,y + 10)
 
-        self.draw_solid_line(head=start_point,tail=end_point,color=color,layer_index=layer_index)
+        self.draw_solid_line(head=start_point,tail=end_point,color=color,layer_index=layer_index,canvas=canvas)
+
+    def crop_and_paste_canvas(self, paste_canvas,layer_index,copy_list,paste_list):
+        x = copy_list[0]
+        y = copy_list[1]
+        width = copy_list[2]
+        height = copy_list[3]
+
+        crop = self[layer_index].get_image_data(x,y,width,height)
+
+        x = paste_list[0]
+        y = paste_list[1]
+
+        paste_canvas.put_image_data(crop, x,y)
+        # copy_canvas.observe(crop_and_paste_canvas, "image_data")
+
+    def get_subtree(self,subtree_list,label):
+        for subtree in subtree_list:
+            if subtree.label == label:
+                return subtree
+
 
 class Point():
     def __init__(self,x,y):
@@ -74,6 +106,8 @@ class Block():
 
         if topL and botR:
             self.calculate_width_height()
+            self.topR = Point(self.botR.x, self.topL.y)
+            self.botL = Point(self.topL.x, self.botR.y)
 
     def check_in_range(self,point):
         return point.x >= self.topL.x and point.x <= self.botR.x and point.y >= self.topL.y and point.y <= self.botR.y
@@ -135,6 +169,17 @@ class Subtree_Block_Segment(Block):
 
 
 
+def hex_to_rgb(hex_color):
+    hex_color = hex_color.lstrip('#')
+    return tuple(int(hex_color[i:i + 2], 16) for i in (0, 2, 4))
+
+def rgb_to_hex(rgb_color):
+    return '#{:02x}{:02x}{:02x}'.format(*rgb_color)
+
+def lighten_color(hex_color, amount=10):
+    rgb_color = hex_to_rgb(hex_color)
+    lightened_rgb = tuple(min(255, c + amount) for c in rgb_color)
+    return rgb_to_hex(lightened_rgb)
 
 
 
