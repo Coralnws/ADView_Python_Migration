@@ -12,8 +12,6 @@ class tcCanvas(MyCanvas):
     id = None
     ad_list = []
     rt_ad = None
-    subtree_output = []
-
 
     # layer -1 for subtree comparison view
     # layer -2 for tree name
@@ -228,6 +226,7 @@ class tcCanvas(MyCanvas):
             check_elided['node'] = current_ad_node
             check_elided['context_level'] = 0
 
+            result = None
             for subtree in self.adPy.subtree_list:
                 result = self.check_relation(subtree=subtree,node=tc_node,tree_index = tc_tree.id,nested_subtree_duplicate=nested_subtree_duplicate)
                 if result == SUBTREE_ROOT:
@@ -235,6 +234,15 @@ class tcCanvas(MyCanvas):
                                                   current_ad_node=current_ad_node , level=level,nested_subtree=nested_subtree, nested_ad=nested_ad,check_elided=check_elided,nested_subtree_duplicate=nested_subtree_duplicate)
 
                     return
+
+            # if result == NON_DESCENDANT:
+            #     self.generate_block_by_result(result=result, subtree=None, tc_tree=tc_tree, tc_node=tc_node,
+            #                                   current_ad_node=current_ad_node, level=level,
+            #                                   nested_subtree=nested_subtree, nested_ad=nested_ad,
+            #                                   check_elided=check_elided,
+            #                                   nested_subtree_duplicate=nested_subtree_duplicate)
+            #     return
+
 
         result_list = {}
 
@@ -274,7 +282,7 @@ class tcCanvas(MyCanvas):
 
                 parent = check_elided['node']
                 current_ad_node.child_index = ori_child.child_index
-                current_ad_node.x_level = ori_child.x_level + 2
+                current_ad_node.x_level = ori_child.x_level + 1
                 current_ad_node.is_elided = True
                 check_elided['node'] = None
                 check_elided['context_level'] = 0
@@ -314,7 +322,7 @@ class tcCanvas(MyCanvas):
                 else:
                     self.ad_constructing.insert_node(check_elided['node'], current_ad_node)
 
-                current_ad_node.x_level = ori_child.x_level + 2
+                current_ad_node.x_level = ori_child.x_level + 1
                 new_ad_node.x_level = current_ad_node.x_level + 1
                 current_ad_node.is_elided = True
                 check_elided['node'] = None
@@ -392,7 +400,7 @@ class tcCanvas(MyCanvas):
                         nested_ad.insert_node(parent, current_ad_node)
                     else:
                         self.ad_constructing.insert_node(parent, current_ad_node)
-                    current_ad_node.x_level = ori_child.x_level + 2
+                    current_ad_node.x_level = ori_child.x_level + 1
                     new_ad_node.x_level = current_ad_node.x_level + 1
                     current_ad_node.is_elided = True
                     check_elided['node'] = None
@@ -404,7 +412,7 @@ class tcCanvas(MyCanvas):
                         self.ad_constructing.insert_node(current_ad_node, new_ad_node)
                 else:
                     new_ad_node.child_index = ori_child.child_index
-                    new_ad_node.x_level = ori_child.x_level + 2
+                    new_ad_node.x_level = ori_child.x_level + 1
                     new_ad_node.is_elided = True
                     subtree_block.is_elided = True
                     if nested_ad:
@@ -473,7 +481,7 @@ class tcCanvas(MyCanvas):
             # self.duplicate_subtree = None
 
         elif result == IS_DESCENDANT:
-            # print("IS_DESCENDANT")
+            print("IS_DESCENDANT")
             new_ad_node = adPy.AD_Node(node_or_block=tc_node, x_level=level, type=INTERNAL,
                                         child_index=tc_node.index,type_prior=result)
 
@@ -492,7 +500,7 @@ class tcCanvas(MyCanvas):
                               nested_subtree=nested_subtree, nested_ad=nested_ad,check_elided=check_elided,nested_subtree_duplicate=nested_subtree_duplicate)
 
         elif result == NON_DESCENDANT:
-            # print("NON_DESCENDANT")
+            print("NON_DESCENDANT")
             non_descendant_block = self.individual_block(subtree=None, type=INDIVIDUAL_BLOCK)
             non_descendant_block.color = BLANK
             non_descendant_block.root = tc_node
@@ -528,9 +536,7 @@ class tcCanvas(MyCanvas):
                 return INDEPENDENT_LEAF
 
         if self.check_leaf_node_descendant(subtree,node) == IS_DESCENDANT:
-
             if self.escape_taxa_as_context_block:
-
                 if nested_subtree_duplicate or self.check_subtree_in_descendant(node,tree_index=tree_index):
                     return IS_DESCENDANT
             else:
@@ -597,7 +603,7 @@ class tcCanvas(MyCanvas):
 
         current_row = 0
         for index,ad_tree in enumerate(ad_list):
-            # Testing
+            #
             # if index in [2,4,5,6,7,8,9,10,11,12,16,17,18,19]:
             #     ad_tree.missing_taxa_list = {'Monomastix opisthostigma'}
             if ad_tree.missing_taxa_list:
@@ -939,7 +945,11 @@ class tcCanvas(MyCanvas):
             scale_tmp = 0.7
 
         # Draw segment
-        segment_height = block.height / len(ad_tree.missing_taxa_segment)
+        if len(ad_tree.missing_taxa_segment) != 0:
+            segment_height = block.height / len(ad_tree.missing_taxa_segment)
+        else:
+            segment_height = block.height
+
         for index,segment in enumerate(ad_tree.missing_taxa_segment):
             segment_y = block.topL.y + segment_height * index
             segment_width = self.get_color_segment_width(block.width,len(segment.missing_taxa_list),len(ad_tree.missing_taxa_list))
@@ -950,8 +960,10 @@ class tcCanvas(MyCanvas):
         self[layer_index].font = f'{12 * scale_tmp}px Times New Romans'
         # Write subtree label on top left corner
         self[layer_index].fill_style = BLACK
-        self[layer_index].fill_text(str(len(ad_tree.missing_taxa_list)), block.botR.x - 10,
+        self[layer_index].text_align = RIGHT
+        self[layer_index].fill_text(str(len(ad_tree.missing_taxa_list)), block.botR.x - 8,
                                     block.topL.y + (12 * scale_tmp))
+        self[layer_index].text_align = LEFT
 
     def get_color_segment_width(self,width,segment,block):
         # width : total width

@@ -59,11 +59,16 @@ class pairwiseCanvas(MyCanvas):
 
         self.left_tree_width = 0
         self.right_tree_width = self.width
+        self.left_tree_height = 0
+        self.right_tree_height = 0
 
         self.node_hover = None
 
         self.last_draw_time = time.time()
         self.last_mouse_position = None
+
+        self.left_missing_taxa_list = []
+        self.right_missing_taxa_list = []
 
         self.rt_section_list = []
         self.left_tree_section_list = []
@@ -103,6 +108,7 @@ class pairwiseCanvas(MyCanvas):
     def default_value(self,align):
         if align == LEFT:
             self.left_tree_width = 0
+            self.left_tree_height = 0
             self.x = 30
             self.left_escape_taxa_list = {}  # {'node':[subtree.color]}
             self.left_escape_taxa_subtree = []
@@ -121,6 +127,7 @@ class pairwiseCanvas(MyCanvas):
             self.tc_right_layer_occupied = [0, 0, 0, 0, 0]
             self.tc_right_subtree_list = []
             self.right_tree_width = self.width
+            self.right_tree_height = 0
             self.right_tree_section_list = []
             self.setup_section_list([self.right_tree_section_list])
 
@@ -137,12 +144,15 @@ class pairwiseCanvas(MyCanvas):
 
     def draw_tree(self, draw_canvas, type,align, node, level=0):   # align = left or right
         # Default : Tree root as reference tree's root
+
+        node.is_missing = False
         for child in node.child_node_iter():
             self.draw_tree(draw_canvas=draw_canvas,type=type, align=align, node=child, level=level + 1)
 
         # Set canvas style
         draw_canvas.fill_style = BLACK
         draw_canvas.font = LEAF_FONT
+
 
         if node.is_leaf():
             if self.compare_between_tc:
@@ -153,21 +163,25 @@ class pairwiseCanvas(MyCanvas):
             if align == RIGHT:
                 x = self.width - PAIRWISE_RIGHT_PADDING - x
 
-            node.pos_in_pairwise = Point(x, self.y)  # Node pos_in_pairwiseition
+            node.pos_in_pairwise = Point(x, self.y)  # Node position
 
             self.y += RT_Y_INTERVAL
 
             # Mouse click range of current leaf node
             if align == LEFT:
                 range_topL_in_pairwise = Point(PAIRWISE_X_INTERVAL * level + PAIRWISE_X_INTERVAL, node.pos_in_pairwise.y - NODE_BLOCK_HEIGHT)
-                range_botR_in_pairwise = Point(node.pos_in_pairwise.x + PAIRWISE_X_INTERVAL + len(str(node.taxon.label)) * 12,
+                range_botR_in_pairwise = Point(node.pos_in_pairwise.x + PAIRWISE_X_INTERVAL + len(str(
+                    node.taxon.label)) * 11,
                                    range_topL_in_pairwise.y + NODE_BLOCK_HEIGHT + 3)
                 node.mouse_range_in_pairwise = Block(range_topL_in_pairwise, range_botR_in_pairwise)
                 node.pairwise_block = Block(range_topL_in_pairwise, range_botR_in_pairwise)
 
                 max_x = node.pos_in_pairwise.x + PAIRWISE_X_INTERVAL + len(str(node.taxon.label)) * 10
+
                 if range_botR_in_pairwise.x > self.left_tree_width:
                     self.left_tree_width = max_x
+                if range_botR_in_pairwise.y > self.left_tree_height:
+                    self.left_tree_height = range_botR_in_pairwise.y
 
             elif align == RIGHT:
                 range_topL_in_pairwise = Point(node.pos_in_pairwise.x - PAIRWISE_X_INTERVAL - (len(str(node.taxon.label))) * 12, node.pos_in_pairwise.y -
@@ -179,6 +193,8 @@ class pairwiseCanvas(MyCanvas):
 
                 if range_topL_in_pairwise.x < self.right_tree_width:
                     self.right_tree_width = range_topL_in_pairwise.x
+                if range_botR_in_pairwise.y > self.right_tree_height:
+                    self.right_tree_height = range_botR_in_pairwise.y
 
             self.draw_leaf_node(draw_canvas, node,align)
 
@@ -190,7 +206,6 @@ class pairwiseCanvas(MyCanvas):
 
         else:
             if self.compare_between_tc and not self.node_similarity_checked:
-                self.output.append(node)
                 if node.corr:
                     compare_node = node.corr.corr[self.tc_tree[1].id]
                     self.check_similarity(node,compare_node)
@@ -285,7 +300,6 @@ class pairwiseCanvas(MyCanvas):
         top_section_index = math.floor(node.mouse_range_in_pairwise.topL.y / MIN_SECTION_HEIGHT)
         bottom_section_index = math.floor(node.mouse_range_in_pairwise.botR.y / MIN_SECTION_HEIGHT)
 
-
         if not self.inner_section:
             if top_section_index == bottom_section_index:
                 section_list[top_section_index].append(node)
@@ -332,10 +346,13 @@ class pairwiseCanvas(MyCanvas):
         return False
 
     def filter_node_from_section_list(self,section_list,x,y):
+
         node_selected = None
         inner_section_check = [1,1,1]
 
         section_index = math.floor(y / MIN_SECTION_HEIGHT)
+
+
         inner_section_check[0] = 0
         for node in section_list[section_index][0]:
             if self.filter_node_selected(node, x, y):
@@ -362,6 +379,9 @@ class pairwiseCanvas(MyCanvas):
         return node_selected
 
     def mouse_clicked(self, x, y):
+        if self.compare_between_tc:
+            return
+
         # node_selected = self.rt.find_node(lambda node: self.filter_node_selected(node, x, y))
         if self.node_hover and self.filter_node_selected(self.node_hover ,x, y):
             node_selected = self.node_hover
@@ -383,7 +403,7 @@ class pairwiseCanvas(MyCanvas):
         subtree_root = False
 
         current_time = time.time()
-        if current_time - self.last_draw_time > 0.1:
+        if current_time - self.last_draw_time > 0.2:
             self.last_draw_time = current_time
 
             # Filter node
@@ -393,6 +413,7 @@ class pairwiseCanvas(MyCanvas):
                 if self.compare_between_tc:
                     type = TC
                     node_selected = self.filter_node_from_section_list(self.left_tree_section_list, x, y)
+
 
                     if node_selected in self.left_escape_taxa_list:
                         subtree_root = True
@@ -423,7 +444,6 @@ class pairwiseCanvas(MyCanvas):
         else:
             return
 
-
         if not node_selected:
             self.node_hover = node_selected
             self[self.HOVER_NODE_LAYER].clear()
@@ -436,7 +456,8 @@ class pairwiseCanvas(MyCanvas):
         if node_selected and node_selected != self.node_hover:
             self.node_hover = node_selected
             self.draw_hover_block(type=type,align=align,node=self.node_hover)
-            self.draw_node_details(type,node_selected,subtree_root)
+            if not node_selected.is_missing:
+                self.draw_node_details(type,node_selected,subtree_root)
 
     def draw_node_details(self,type,node,subtree_root):
         # support , length , exact match
@@ -451,8 +472,8 @@ class pairwiseCanvas(MyCanvas):
         length = node.edge.length if node.edge.length != None else 0
         length = "Length : " + str(length)
 
-        if len(length) * 10 > label_length:
-            label_length = len(length) * 10
+        if len(length) * 8 > label_length:
+            label_length = len(length) * 8
 
         if type == TC and len(self.adPy.tc) > 0 and subtree_root:
             exact_match =  str(node.exact_match_percentage * 100)
@@ -464,8 +485,8 @@ class pairwiseCanvas(MyCanvas):
 
         exact_match = "Exact Match :  " + exact_match + "%"
 
-        if len(exact_match) * 10 > label_length:
-            label_length = len(exact_match) * 10
+        if len(exact_match) * 8 > label_length:
+            label_length = len(exact_match) * 8
 
         similarity = ""
         if type == TC:
@@ -507,9 +528,17 @@ class pairwiseCanvas(MyCanvas):
                 self.draw_rec(node.pos_in_pairwise.x + 2, node.pos_in_pairwise.y - RT_X_INTERVAL + 2 , RT_X_INTERVAL,
                               RT_X_INTERVAL - 2, BLACK, layer_index=self.HOVER_NODE_LAYER)
             else:
-                width = node.pos_in_pairwise.x - node.mouse_range_in_pairwise.topL.x
-                self.draw_rec(node.mouse_range_in_pairwise.topL.x, node.pos_in_pairwise.y - RT_X_INTERVAL,width,
-                              RT_X_INTERVAL - 2, BLACK, layer_index = self.HOVER_NODE_LAYER)
+                if node.is_missing:
+                    radius = 4
+                    self[self.HOVER_NODE_LAYER].fill_style = BLACK
+                    self[self.HOVER_NODE_LAYER].fill_arc(self.left_tree.missing_taxa_block.botR.x -
+                                                         RT_X_INTERVAL - 2,
+                                                         node.pos_in_pairwise.y + RT_X_INTERVAL,
+                                                         radius, 0, 360)
+                else:
+                    width = node.pos_in_pairwise.x - node.mouse_range_in_pairwise.topL.x
+                    self.draw_rec(node.mouse_range_in_pairwise.topL.x, node.pos_in_pairwise.y - RT_X_INTERVAL,width,
+                                  RT_X_INTERVAL - 2, BLACK, layer_index = self.HOVER_NODE_LAYER)
             if corr:
                 return
             else:
@@ -518,24 +547,31 @@ class pairwiseCanvas(MyCanvas):
                     self.draw_hover_block(type=TC,align=RIGHT,node=node,corr=True)
                 else:
                     self.draw_hover_block(type=TC, align=RIGHT, node=node.corr[self.tc_tree.id], corr=True)
-        else:
+        elif align == RIGHT:
             if not node.is_leaf():
                 self.draw_rec(node.pos_in_pairwise.x - RT_X_INTERVAL - 2, node.pos_in_pairwise.y - RT_X_INTERVAL + 2 ,
                               RT_X_INTERVAL,
                               RT_X_INTERVAL - 2, BLACK, layer_index=self.HOVER_NODE_LAYER)
             else:
-                width = node.mouse_range_in_pairwise.botR.x - node.pos_in_pairwise.x
-                self.draw_rec(node.pos_in_pairwise.x, node.pos_in_pairwise.y - RT_X_INTERVAL, width,
-                              RT_X_INTERVAL - 2, BLACK, layer_index = self.HOVER_NODE_LAYER)
+                if node.is_missing:
+                    radius = 4
+                    self[self.HOVER_NODE_LAYER].fill_style = BLACK
+                    self[self.HOVER_NODE_LAYER].fill_arc(node.pos_in_pairwise.x - RT_X_INTERVAL,
+                                                         node.pos_in_pairwise.y + RT_X_INTERVAL,
+                                                              radius, 0, 360)
+                else:
+                    width = node.mouse_range_in_pairwise.botR.x - node.pos_in_pairwise.x
+                    self.draw_rec(node.pos_in_pairwise.x, node.pos_in_pairwise.y - RT_X_INTERVAL, width,
+                                  RT_X_INTERVAL - 2, BLACK, layer_index = self.HOVER_NODE_LAYER)
             if corr:
                 return
             else:
                 if self.compare_between_tc:
                     node = node.corr.corr[self.tc_tree[0].id]
+
                     self.draw_hover_block(type=TC,align=LEFT,node=node,corr=True)
                 else:
                     self.draw_hover_block(type=RT,align=LEFT,node=node.corr,corr=True)
-
 
         self[self.HOVER_NODE_LAYER].flush()
 
@@ -571,7 +607,11 @@ class pairwiseCanvas(MyCanvas):
         elif align == RIGHT:
             rec_x = self.left_tree_width + TREE_PADDING
             rec_y = node_selected.pairwise_block.topL.y
-            if node_selected.is_leaf():
+
+            if node_selected.is_missing:
+                rec_x = node_selected.pairwise_block.topL.x - 5
+                rec_width = node_selected.pairwise_block.botR.x - rec_x - RT_X_INTERVAL
+            elif node_selected.is_leaf():
                 rec_width = node_selected.mouse_range_in_pairwise.botR.x - rec_x - RT_X_INTERVAL
             else:
                 rec_width = node_selected.mouse_range_in_pairwise.botR.x - rec_x
@@ -582,26 +622,46 @@ class pairwiseCanvas(MyCanvas):
 
         return new_block
 
+    def get_node_from_tree(self,tree,taxa_name):
+
+        if taxa_name in tree.missing:
+            for node in tree.missing_node_list:
+                if node.label == taxa_name:
+                    return node
+        else:
+            node = tree.find_node_with_taxon_label(taxa_name)
+
+        return node
 
     def remove_escape_taxa(self,subtree_label,escape_taxa_list):
+        escape_taxa_delete = []
         for escape_taxa,subtree_list in escape_taxa_list.items():
+
             for subtree in subtree_list:
                 if subtree_label == subtree.label:
                     subtree_list.remove(subtree)
                     if len(subtree_list) == 0:
-                        del escape_taxa_list[escape_taxa]
+                        escape_taxa_delete.append(escape_taxa)
+        for taxa in escape_taxa_delete:
+            del escape_taxa_list[taxa]
+
+        return
+
 
     def draw_escape_taxa(self,align):
         if align == LEFT:
+            tree = self.left_tree
             layer_index = self.LEFT_ESCAPE_TAXA_LAYER
             escape_taxa_list = self.left_escape_taxa_list
         else:
+            tree = self.right_tree
             layer_index = self.RIGHT_ESCAPE_TAXA_LAYER
             escape_taxa_list = self.right_escape_taxa_list
 
         self[layer_index].clear()
         for escape_taxa,subtree_list in escape_taxa_list.items():
-            block = escape_taxa.escape_taxa_block
+            node = self.get_node_from_tree(tree,escape_taxa)
+            block = node.escape_taxa_block
             if len(subtree_list) == 1:
                 subtree = subtree_list[0]
                 self.draw_rec(block.topL.x, block.topL.y, block.width, block.height,subtree.color,layer_index=layer_index)
@@ -620,10 +680,37 @@ class pairwiseCanvas(MyCanvas):
 
         node_selected.escape_taxa_block = self.generate_subtree_block(node_selected,align=align)
         taxa_subtree_list.append(subtree.label)
-        if node_selected not in taxa_list:
-            taxa_list[node_selected] = []
+        if node_selected.taxon.label not in taxa_list:
+            taxa_list[node_selected.taxon.label] = []
 
-        taxa_list[node_selected].append(subtree)
+        taxa_list[node_selected.taxon.label].append(subtree)
+
+    def record_missing_taxa(self,node_selected,subtree,align):
+        if align == LEFT:
+            taxa_list = self.left_missing_taxa_list
+        else:
+            taxa_list = self.right_missing_taxa_list
+
+        if hasattr(node_selected,'subtree'):
+            if type(node_selected.subtree) is list:
+                node_selected.subtree.append(subtree)
+            else:
+                subtree_list = [node_selected.subtree,subtree]
+                node_selected.subtree = subtree_list
+        else:
+            node_selected.subtree = subtree
+
+        node_selected.selected = True
+        taxa_list.append(node_selected)
+
+    def draw_missing_taxa(self,align):
+        if align == LEFT:
+            taxa_list = self.left_missing_taxa_list
+        else:
+            taxa_list = self.right_missing_taxa_list
+
+        for taxa in taxa_list:
+            self.draw_subtree_block(taxa,select_tree=TC,new_subtree=taxa.subtree,align=align)
 
     def draw_subtree_block(self,node_selected,select_tree=None,new_subtree=None,subtree_from_rt=None,align=None):
         new_block = self.generate_subtree_block(node_selected, align=align)
@@ -663,11 +750,15 @@ class pairwiseCanvas(MyCanvas):
             tmp_sorted_layer_list.append(subtree.label)
 
             self[i].clear()
+            if subtree.root.is_missing:
+                subtree_block = subtree.root.pairwise_block
+
+
             self.draw_rec(subtree_block.topL.x, subtree_block.topL.y, subtree_block.width, subtree_block.height,subtree.color,
-                          layer_index=i)
+                      layer_index=i)
 
-
-            self.write_block_label(subtree, i,align=align)
+            if subtree.root.is_missing == False:
+                self.write_block_label(subtree, i,align=align)
 
             self[i].label = subtree.label
             self[i].flush()
@@ -686,39 +777,35 @@ class pairwiseCanvas(MyCanvas):
             tc_clear_layer = None
             clear_layer = self.rt_sorted_layer_list.index(subtree.label)
 
-            # Testing
-            # tmp_canvas = Canvas(width=self.width,height=self.height)
-            # tmp_canvas.draw_image(self[clear_layer],0,0)
-            # tmp_canvas2 = Canvas(width=self.width, height=self.height)
-            # tmp_canvas2.draw_image(self[1], 0, 0)
-            # self.adPy.output.append(tmp_canvas)
-            # self.adPy.output.append(tmp_canvas2)
-
             self[clear_layer].clear()
 
             if self.tc_tree:
                 if self.compare_between_tc:
-                    tc_clear_layer = self.tc_left_sorted_layer_list.index(subtree.label)
-                    self[tc_clear_layer + 14].clear()
+                    if subtree.label in self.tc_left_sorted_layer_list:
+                        tc_clear_layer = self.tc_left_sorted_layer_list.index(subtree.label)
+                        self[tc_clear_layer + 14].clear()
 
-                    # left_subtree = self.get_subtree(self.tc_left_subtree_list,subtree.label)
-
-                tc_clear_layer = self.tc_right_sorted_layer_list.index(subtree.label)
-                self[tc_clear_layer + 7].clear()
-
+                if subtree.label in self.tc_right_sorted_layer_list:
+                    tc_clear_layer = self.tc_right_sorted_layer_list.index(subtree.label)
+                    self[tc_clear_layer + 7].clear()
 
             if self.compare_between_tc:
                 left_subtree = self.get_subtree(self.tc_left_subtree_list, subtree.label)
                 self.tc_left_subtree_list.remove(left_subtree)
+                self.remove_escape_taxa(subtree.label,self.left_escape_taxa_list)
 
             right_subtree = self.get_subtree(self.tc_right_subtree_list, subtree.label)
-            self.tc_right_subtree_list.remove(right_subtree)
+            if right_subtree :
+                self.tc_right_subtree_list.remove(right_subtree)
+            self.remove_escape_taxa(subtree.label,self.right_escape_taxa_list)
 
-            self.draw_escape_taxa(LEFT)
+            if self.compare_between_tc:
+                self.draw_escape_taxa(LEFT)
+
             self.draw_escape_taxa(RIGHT)
 
         except Exception as err:
-            self[-1].fill_text("Error in remove subtree", self.width - 200, 20)
+            self[-1].fill_text("Loading", self.width - 200, 20)
 
 
     def setup_tc_subtree_list(self,tree,align):
@@ -744,18 +831,27 @@ class pairwiseCanvas(MyCanvas):
                 tree = self.tc_tree
             subtree_list = self.tc_right_subtree_list
 
-
         corresponding_subtree = subtree.root.corr[tree.id]
+
+        # If taxa in corresponding subtree is all missing taxa in target tree
 
         new_subtree = ADpy.Subtree(label=subtree.label, belong_tree=tree, root=corresponding_subtree,
                                    color=subtree.color)
+        subtree_list.append(new_subtree)
         subtree.corresponding_tc_subtree = new_subtree
+
+        if corresponding_subtree == 0:
+            for leaf_node in subtree.root.leaf_nodes():
+                tc_corr = leaf_node.corr[tree.id]
+
+                self.record_escape_taxa(tc_corr, new_subtree, align)
+            return
+
 
         new_subtree.get_leaf_nodes()
         subtree.get_leaf_nodes()
+
         exact_match = False
-        self.adPy.output.append(new_subtree.leaf_set)
-        self.adPy.output.append(subtree.leaf_set)
         if new_subtree.leaf_set == subtree.leaf_set:
             exact_match = True
 
@@ -783,11 +879,10 @@ class pairwiseCanvas(MyCanvas):
                     self.record_escape_taxa(tc_corr, new_subtree,align)
 
         self.check_duplicate_subtree(corresponding_subtree, subtree, new_subtree)
-
         for leaf_node in corresponding_subtree.leaf_nodes():
             leaf_node.selected = True
 
-        subtree_list.append(new_subtree)
+
         self.draw_subtree_block(corresponding_subtree, select_tree=TC, new_subtree=new_subtree,
                                 subtree_from_rt=subtree,align=align)
 
@@ -825,9 +920,15 @@ class pairwiseCanvas(MyCanvas):
 
             self.left_tree = self.tc_tree[0]
             self.default_value(align=LEFT)
-            with hold_canvas(self):
+            with (hold_canvas(self)):
                 self.draw_tree(self[self.TC_LEFT_LAYER], type=TC,align=LEFT, node=self.tc_tree[0].seed_node, level=0)
                 self.node_similarity_checked = True
+
+                # Draw tree missing taxa
+                if len(self.left_tree.missing) > 0:
+                    self.generate_missing_taxa_block_in_tree(self.left_tree, LEFT)
+                    self.draw_missing_taxa_block(align=LEFT)
+
 
             # Draw tc tree (align right)
             level_tmp = self.get_max_level(self.tc_tree[1])
@@ -838,6 +939,11 @@ class pairwiseCanvas(MyCanvas):
             self.default_value(align=RIGHT)
             with hold_canvas(self):
                 self.draw_tree(self[self.TC_RIGHT_LAYER], type=TC,align=RIGHT, node=self.tc_tree[1].seed_node, level=0)
+
+                # Draw tree missing taxa
+                if len(self.right_tree.missing) > 0:
+                    self.generate_missing_taxa_block_in_tree(self.right_tree, RIGHT)
+                    self.draw_missing_taxa_block(align=RIGHT)
 
             if len(self.adPy.subtree_list) > 0:
                 self.setup_tc_subtree_list(self.tc_tree[0],LEFT)
@@ -853,11 +959,86 @@ class pairwiseCanvas(MyCanvas):
 
             self.default_value(align=RIGHT)
 
-            with hold_canvas(self):
+            with (hold_canvas(self)):
                 self.draw_tree(self[self.TC_RIGHT_LAYER], type = TC,align=RIGHT, node=self.tc_tree.seed_node, level=0)
+
+                if len(self.right_tree.missing) > 0:
+                    self.generate_missing_taxa_block_in_tree(self.right_tree,RIGHT)
+                    self.draw_missing_taxa_block(align=RIGHT)
+
+                    # self.draw_frame(self.right_tree_width, y, width, height, BLACK, layer_index=self.TC_RIGHT_LAYER)
 
             if len(self.adPy.subtree_list) > 0:
                 self.setup_tc_subtree_list(self.tc_tree,RIGHT)
+
+    def generate_missing_taxa_block_in_tree(self,tree,align):
+        if align == RIGHT:
+            x = self.width / 2 + PAIRWISE_X_INTERVAL * 2
+            end_x = x + MISSING_TAXA_BLOCK_WIDTH
+            y = self.right_tree_height + 20
+            layer_index = self.TC_RIGHT_LAYER
+        else:
+            x = self.x
+            end_x = x + MISSING_TAXA_BLOCK_WIDTH
+            y = self.left_tree_height + 20
+
+            layer_index = self.TC_LEFT_LAYER
+
+        height = (len(tree.missing) + 1) * RT_Y_INTERVAL
+        width = end_x - x
+
+        tree.missing_taxa_block = Block(topL=Point(x, y), botR=Point(x + width, y + height))
+
+        self.draw_dotted_frame(x, y, MISSING_TAXA_BLOCK_WIDTH, height, color=BLACK, line_dash_index=1,
+                               layer_index=layer_index)
+
+    def draw_missing_taxa_block(self,align):
+        if align == RIGHT:
+            block = self.right_tree.missing_taxa_block
+            tree = self.right_tree
+            layer_index = self.TC_RIGHT_LAYER
+            label_x = block.topL.x + PAIRWISE_X_INTERVAL * 4
+        else:
+            block = self.left_tree.missing_taxa_block
+            tree = self.left_tree
+            layer_index = self.TC_LEFT_LAYER
+            label_x = block.botR.x - PAIRWISE_X_INTERVAL * 4
+
+        label_y = block.topL.y + PAIRWISE_X_INTERVAL
+
+        for node in tree.missing_node_list:
+            if align == LEFT:
+                node.pos_in_pairwise = Point(block.topL.x + PAIRWISE_X_INTERVAL, label_y + 6)
+            else:
+                node.pos_in_pairwise = Point(label_x - 7, label_y + 6)
+
+            if align == LEFT:
+                end_x = label_x + 6
+            else:
+                end_x = block.botR.x - PAIRWISE_X_INTERVAL
+
+            range_botR_in_pairwise = Point(end_x, label_y + RT_Y_INTERVAL + 3)
+
+            node.mouse_range_in_pairwise = Block(node.pos_in_pairwise, range_botR_in_pairwise)
+            node.pairwise_block = Block(node.pos_in_pairwise, range_botR_in_pairwise)
+
+            label_y += RT_Y_INTERVAL
+
+            self[layer_index].fill_style = BLACK
+            self[layer_index].font = LEAF_FONT
+
+            if align == RIGHT:
+                self[layer_index].text_align = LEFT
+            else:
+                self[layer_index].text_align = RIGHT
+
+            self[layer_index].fill_text(node.label, label_x, label_y)
+
+            if align == RIGHT:
+                self.insert_node_section_list(self.right_tree_section_list, node)
+            else:
+                self.insert_node_section_list(self.left_tree_section_list, node)
+
 
     def reset_subtree_canvas(self):
         for i in range(0,11):
@@ -866,7 +1047,7 @@ class pairwiseCanvas(MyCanvas):
             self[i].clear()
 
     def check_similarity(self,node,compare_node):
-        self.output.append("in check similarity")
+
         first_leaf_nodes = {leaf.taxon.label for leaf in node.leaf_nodes()}
         second_leaf_nodes = {leaf.taxon.label for leaf in compare_node.leaf_nodes()}
 
@@ -874,7 +1055,6 @@ class pairwiseCanvas(MyCanvas):
 
         node.pairwise_similarity = len(intersection_nodes)/len(first_leaf_nodes)
         compare_node.pairwise_similarity = len(intersection_nodes) / len(second_leaf_nodes)
-        self.output.append(node.pairwise_similarity)
-        self.output.append(compare_node.pairwise_similarity)
+
 
 

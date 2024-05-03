@@ -91,6 +91,8 @@ class MyCanvas(MultiCanvas):
             if subtree.label == label:
                 return subtree
 
+        return None
+
 
 class Point():
     def __init__(self,x,y):

@@ -17,8 +17,6 @@ class rtCanvas(MyCanvas):
     NODE_HOVER_LAYER = -2
     RT_LAYER = -1
 
-    output = []
-
     def __init__(self,adPy,width,height,view_support,default_rt=None):
         super().__init__( 8, width = width, height = height)
         # Layer 7 - reference tree
@@ -81,6 +79,7 @@ class rtCanvas(MyCanvas):
         if node is None:
             node = self.rt.seed_node
 
+        node.is_missing = False
         for child in node.child_node_iter():
             self.draw_rt(draw_canvas=draw_canvas,node=child, level=level + 1)
 
@@ -254,7 +253,6 @@ class rtCanvas(MyCanvas):
         if x > self.tree_width:
             return None
 
-        self.output = []
         inner_section_check = [1,1,1]
 
         section_index = math.floor(y / MIN_SECTION_HEIGHT)
@@ -543,7 +541,6 @@ class rtCanvas(MyCanvas):
 
     def draw_subtree_compare_nodes(self,nodes_list):
         self.clear_subtree_compare_canvas()
-        self.output = []
         for node in nodes_list:
             rt_node = node.corr
             self.draw_nodes_dots(rt_node)

@@ -21,7 +21,7 @@ from sklearn.manifold import TSNE
 
 
 class ADpy:
-
+    output = []
     def __init__(self,treefile = None,type="newick"):
         # Reference Tree related
         self.rt = None  # Reference Tree
@@ -49,7 +49,6 @@ class ADpy:
 
         self.tree_distribution_view = None
 
-
         # Paiwise canvas related
         self.pairwise_canvas = None
         self.default_subtree_attribute()
@@ -57,7 +56,12 @@ class ADpy:
         self.read_rt(treefile = treefile, type = type)
 
 
-    #####  Public Functions ####
+    # ==========================  Public Functions ================================== #
+
+    # reference_tree() : Function to show reference tree visualization
+    # Parameter: view_support (Whether to write support value of internal node on tree)
+    # Draw reference tree on canvas
+    # User can select subtree through mouse click
     def reference_tree(self,view_support=False,show=True):
         # Calculate height of canvas
         height = get_leaf_node_amount(self.rt) * RT_Y_INTERVAL + RT_Y_INTERVAL
@@ -74,7 +78,8 @@ class ADpy:
         if show:
             return self.rt_canvas
 
-
+    # set_outgroup() : Function to set trees' outgroup
+    # Parameter : outgroup_taxon (python list)
     def set_outgroup(self,outgroup_taxon):
         # Reconstruct Tree
         self.read_rt(treefile=self.rt_file, type=self.tree_schema)
@@ -97,6 +102,8 @@ class ADpy:
         self.rt_alter = True
         self.ad_parameter_alter = True
 
+    # add_tree_collection() : Function to set tree collection
+    # Parameter: treefile(filepath to read trees file), namefile(filepath to read tree name file)
     def add_tree_collection(self,treefile=None,type="newick",namefile=None):
         self.tc = dendropy.TreeList.get_from_path(treefile, schema=type,taxon_namespace = self.rt.taxon_namespace)
 
@@ -109,11 +116,19 @@ class ADpy:
             tree.id = index + 1
             tree.taxa_list = [leaf.taxon.label for leaf in tree.leaf_nodes()]
             tree.missing = set(self.rt.taxa_list) - set(tree.taxa_list)
+            tree.missing_node_list = []
+            for taxa in tree.missing:
+                self.generate_missing_node(tree,taxa)
+
+            tree.missing_node_list = sorted(tree.missing_node_list, key=lambda x: x.label, reverse=False)
+
             tree.pairwise_canvas = None
 
             if namefile:
                 tree_name = file.readline().strip()
                 tree.name = tree_name
+            else:
+                tree.name = ""
 
             if len(self.outgroup) > 1:
                 mrca = tree.mrca(taxon_labels=self.outgroup)
@@ -124,7 +139,8 @@ class ADpy:
         self.generate_tree_distance_matrix()
         # self.rt_alter = True
         self.corresponding_branches()
-        
+
+    # tree_collection() : Function to get tree info from tree collection
     def tree_collection(self,sort_by=ID):
         tc_list = self.sort_tc(self.tc,sorted)
          
@@ -134,15 +150,10 @@ class ADpy:
             print(" " * 2 + "Distance: " + str(tree.rf_distance))
             print("\n")
 
-    def sort_tc(self,tc_list,sort_by):
-        if sort_by == ID:
-            return sorted(tc_list, key=lambda x: (x.id),reverse=False)
-        elif sort_by == RF_DISTANCE:
-            return sorted(tc_list, key=lambda x: (x.rf_distance, x.name),reverse=False)
-        elif sort_by == NAME:
-            return sorted(tc_list, key=lambda x: (x.name),reverse=False)
-        
-    # Same effect as click on the common ancestor of these nodes
+
+    # select_subtree() : Function to select subtree
+    # Parameter: nodes(python list, contain taxa name as string)
+    # Same effect as click on the most recent common ancestor of these taxa
     def select_subtree(self,nodes=None):
         nodes_list = []
         subtree_root = None
@@ -166,6 +177,8 @@ class ADpy:
         # if self.rt_canvas:
         #     self.rt_canvas.draw_subtree_block(subtree_root)
 
+    # select_taxa() : Function to choose a taxa(one and only one) as subtree
+    # Parameter: node(string - taxa name)
     # Same effect as click on the leaf_node
     def select_taxa(self, node=None):
         if not self.rt_canvas:
@@ -176,14 +189,12 @@ class ADpy:
         for leaf_node in self.rt.leaf_node_iter():
             if node.lower() in leaf_node.taxon.label.lower():
                 self.select_subtree_from_tree(leaf_node)
-                # if self.rt_canvas:
-                #     self.rt_canvas.draw_subtree_block(leaf_node)
 
         # Exact taxon name
         # node = self.rt.find_node_with_taxon_label(node)
         # self.rt_canvas.draw_subtree_block(node)
 
-    # Show AD, default: show individual AD
+    # AD() : Function to get Aggregated Dendrogram, Individual AD or cluster AD
     def AD(self,view=AD_INDIVIDUAL,scale=1.0,max_ad=None,context_level=2,ad_interval=None,tree_id=None,
            tree_name=None,filter=INCLUDE,sort=RF_DISTANCE,escape_taxa_as_context_block=True,show_block_proportional=True,
            subtree_independent=False,parameter_from_individual_ad=True,differentiate_inexact_match=True,
@@ -239,7 +250,6 @@ class ADpy:
             ad_per_row = DEFAULT_AD_PER_ROW
 
         if view == AD_INDIVIDUAL:
-            # if not self.ad_individual_canvas or self.parameter_modified()
             if not self.ad_individual_canvas or self.ad_parameter_alter or export:
                 if max_ad:
                     ad_row = math.ceil(max_ad / ad_per_row)
@@ -264,7 +274,6 @@ class ADpy:
                     for index, ad_tree in enumerate(self.ad_individual_canvas_export.ad_list):
                         with hold_canvas(self.ad_individual_canvas_export):
                             self.ad_individual_canvas_export.paste_ad_tree_canvas(ad_tree)
-                            # self.ad_individual_canvas_export.draw_ad_tree(ad_tree)
                         self.ad_individual_canvas_export[ad_tree.located_layer].flush()
 
                 else:
@@ -278,7 +287,6 @@ class ADpy:
                                                                   show_block_proportional=show_block_proportional,
                                                                   subtree_independent=subtree_independent,show_tree_name=show_tree_name)
                     display(self.ad_individual_canvas)
-                # # for layer in range(0, self.ad_individual_canvas.layer):
                     for index, ad_tree in enumerate(self.ad_individual_canvas.ad_list):
                         with hold_canvas(self.ad_individual_canvas):
                             self.ad_individual_canvas.paste_ad_tree_canvas(ad_tree)
@@ -288,9 +296,7 @@ class ADpy:
             else:
                 display(self.ad_individual_canvas)
 
-                # return self.ad_individual_canvas
 
-        # Parameter: differentiate inexact match, differentiate sister-group relationships
         elif view == AD_CLUSTER:
             if not self.ad_cluster_canvas or self.ad_parameter_alter or export:
                 if export:
@@ -316,16 +322,8 @@ class ADpy:
             else:
                 return self.ad_cluster_canvas
 
-
+    # tree_distance() : Function to get all trees' distance scatter ()
     def tree_distance(self):
-        # self.tree_distance_matrix = np.random.rand(69, 69)
-        # self.tree_distance_matrix = (self.tree_distance_matrix + self.tree_distance_matrix.T) / 2
-        # np.fill_diagonal(self.tree_distance_matrix, 0)
-
-        # mds = MDS(n_components=2, dissimilarity='precomputed',random_state=42)
-        # self.tree_point_coordinates = mds.fit_transform(self.tree_distance_matrix)
-        # self.tree_point_coordinates -= self.tree_point_coordinates.min(axis=0)
-
         tsne = TSNE(n_components=2)
         self.tree_point_coordinates = tsne.fit_transform(self.tree_distance_matrix)
 
@@ -354,40 +352,67 @@ class ADpy:
 
         fig.show()
 
-    def remove_taxa(self,tree,taxa_list=None):
-        remove_taxa_list = []
-        for i in range(10,len(self.rt.taxa_list)-1):
-            taxa_list = (self.rt.taxa_list[i])
-
-        # Iterate over the tree and remove the specified taxa
-        for taxon_label in remove_taxa_list:
-            self.rt.prune_taxa_with_labels(taxon_label)
-
-        # Save the modified tree to a new file
-        tree.write(path="modified_tree_file.tre", schema="newick")
-
+    # pairwise_comparison() : Function to show trees' pairwise comparison
+    # Compare reference tree with tree from tree collection / Compare two trees from tree collection
+    # Parameter : compare_tree(integer or integer list - tree id ; string or string list - tree name)
     def pairwise_comparison(self,compare_tree=None):
-        # adPy,layer, width, height,rt_canvas,tc_tree
-        # Testing
         if not self.rt_canvas and not self.pairwise_canvas:
             self.create_pairwise_rt_canvas()
 
         compare_between_tc = False
         if compare_tree:
             if type(compare_tree) is list:
-                compare_tree = [self.tc[compare_tree[0]-1],self.tc[compare_tree[1]-1]]
-                compare_between_tc = True
-            else:
-                compare_tree = self.tc[compare_tree - 1]
-        elif self.ad_individual_canvas.tree_selected:
-            compare_tree = self.ad_individual_canvas.tree_selected.tc_tree
+                tmp_list = []
+                for tree in compare_tree:
+                    if isinstance(tree, str):
+                        tmp_tree = self.get_tree_by_name(tree)
 
-        elif self.tc:
-            compare_tree = self.tc[1]
+                        if tmp_tree is None:
+                            self.tree_not_exist()
+                            return
+
+                        tmp_list.append(tmp_tree)
+
+                    elif isinstance(tree, int):
+
+                        if tree > len(self.tc) or tree < 0:
+                            self.tree_not_exist()
+                            return
+
+                        tmp_list.append(self.tc[tree - 1])
+                    else:
+                        self.parameter_error("Tree info")
+                        return
+
+                compare_tree = tmp_list
+                compare_between_tc = True
+
+                if compare_tree[0] == compare_tree[1]:
+                    self.tree_is_same_error()
+                    return
+
+            else:
+                if isinstance(compare_tree, str):
+                    compare_tree = self.get_tree_by_name(compare_tree)
+                    if compare_tree is None:
+                        self.tree_not_exist()
+                        return
+                else:
+                    if compare_tree > len(self.tc) or compare_tree < 0:
+                        self.tree_not_exist()
+                        return
+
+                    compare_tree = self.tc[compare_tree - 1]
+
+        else:
+            if not self.ad_individual_canvas.tree_selected:
+                self.no_tree_chosen_error()
+                return
+
+            compare_tree = self.ad_individual_canvas.tree_selected.tc_tree
 
         display(self.pairwise_canvas)
         self.pairwise_canvas.compare_tc_tree(compare_tree,compare_between_tc=compare_between_tc)
-
 
     def tree_distribution(self,test=False):
         self.rt_canvas.clear_subtree_compare_canvas()
@@ -451,11 +476,18 @@ class ADpy:
 
             self.export_canvas = self.get_tree_distribution_image()
 
-
         self.export_canvas.observe(self.save_to_file, "image_data")
 
     ##-------------------------- Internal Functions -----------------------------
-    
+    #
+    def sort_tc(self,tc_list,sort_by):
+        if sort_by == ID:
+            return sorted(tc_list, key=lambda x: (x.id),reverse=False)
+        elif sort_by == RF_DISTANCE:
+            return sorted(tc_list, key=lambda x: (x.rf_distance, x.name),reverse=False)
+        elif sort_by == NAME:
+            return sorted(tc_list, key=lambda x: (x.name),reverse=False)
+
     # Ready canvas for tree dirstribution
     def get_tree_distribution_image(self):
         view_tmp = self.tree_distribution_view
@@ -488,15 +520,15 @@ class ADpy:
         tree_distribution_canvas.fill_text(label_str,pointer_x,pointer_y)
 
         pointer_y += 20
-        tree_distribution_canvas.draw_image(view_tmp.nodes_list_canvas,pointer_x,pointer_y)
-        tree_distribution_canvas.draw_image(view_tmp.rt_subtree_block_canvas, rt_subtree_block_canvas_x, pointer_y)
-        pointer_y += view_tmp.nodes_list_canvas.height + 10
-
         tree_distribution_canvas.draw_image(view_tmp.related_tc_tree_canvas, pointer_x, pointer_y)
+        tree_distribution_canvas.draw_image(view_tmp.rt_subtree_block_canvas, rt_subtree_block_canvas_x, pointer_y)
         pointer_y += view_tmp.related_tc_tree_canvas.height + 10
 
         tree_distribution_canvas.draw_image(view_tmp.cluster_canvas, pointer_x, pointer_y)
         pointer_y += view_tmp.cluster_canvas.height + 10
+
+        tree_distribution_canvas.draw_image(view_tmp.nodes_list_canvas, pointer_x, pointer_y)
+        pointer_y += view_tmp.nodes_list_canvas.height + 10
 
         return tree_distribution_canvas
 
@@ -609,6 +641,13 @@ class ADpy:
         # Get tree's taxa/leaf node
         self.rt.taxa_list = [leaf.taxon.label for leaf in self.rt.leaf_nodes()]
 
+    def generate_missing_node(self,tree,taxa_name):
+        new_taxon = dendropy.Taxon(label=taxa_name)
+        new_node = dendropy.Node(taxon=new_taxon, label=taxa_name)
+        new_node.is_missing = True
+
+        tree.missing_node_list.append(new_node)
+
     def generate_tree_distance_matrix(self):
         dimension = len(self.tc) + 1
         self.tree_distance_matrix = np.zeros((dimension, dimension))
@@ -664,6 +703,17 @@ class ADpy:
                             node.exact_match += 1
                             node.exact_match_tree.append(tree)
 
+                # If no corresponding branch, if is missing taxa in target tree
+                if node.is_leaf() and node.corr[tree.id] == 0:
+                    for tc_node in tree.missing_node_list:
+                        if tc_node.label == node.taxon.label:
+                            node.corr[tree.id] = tc_node
+                            node.corr_similarity = 1.0
+                            tc_node.corr = node
+                            tc_node.corr_similarity = 1.0
+
+                            break
+
     def get_similarity(self,target_set,node,tc_node):
         if tc_node.is_leaf():
             tc_node.card = 0 if tc_node.taxon.label in self.rt.missing else 1
@@ -697,13 +747,20 @@ class ADpy:
         print(f"<Error> : {parameter} given was incorrect.")
         print("Please ensure that the information provided is logical.")
 
-    def no_tree_chosen_error(self,parameter):
+    def no_tree_chosen_error(self):
         print(f"<Error> : No tree was chosen nor given.")
         print("Please choose a tree from AD() OR provide tree id/tree name.")
+
+    def tree_not_exist(self):
+        print(f"<Error> : Tree is not exist.")
+        print("Please choose an existing tree.")
 
     def filename_error(self):
         print(f"<Error> : Please ensure that the filename contains only alphanumeric characters and underscores.")
 
+    def tree_is_same_error(self):
+        print(f"<Error> : Tree chosen is same.")
+        print("Please choose different trees.")
 
     def check_alphanumeric_underscore(self,str):
         # 定义正则表达式模式，表示字符串只包含字母、数字和下划线
@@ -723,7 +780,7 @@ class ADpy:
         self.subtree_color_used = [1, 1, 1, 1, 1]
 
     def create_pairwise_rt_canvas(self,alter_type=BOTH):
-        height = get_leaf_node_amount(self.rt) * RT_Y_INTERVAL + RT_Y_INTERVAL * 2
+        height = get_leaf_node_amount(self.rt) * RT_Y_INTERVAL + RT_Y_INTERVAL * 4
 
         if self.rt_alter:
             self.default_rt = None
@@ -778,6 +835,7 @@ class ADpy:
 
             if self.pairwise_canvas.tc_tree:
                 self.pairwise_canvas.draw_tc_subtree_block(new_subtree,align=RIGHT)
+
                 self.pairwise_canvas.draw_escape_taxa(align=RIGHT)
                 if self.pairwise_canvas.compare_between_tc:
                     self.pairwise_canvas.draw_tc_subtree_block(new_subtree,align=LEFT)
@@ -811,7 +869,12 @@ class ADpy:
             if subtree.label == label:
                 return subtree
 
+    def get_tree_by_name(self,name):
+        for tree in self.tc:
+            if tree.name == name:
+                return tree
 
+        return None
 
 
 class Subtree:
@@ -868,7 +931,6 @@ class Subtree:
         self.leaf_set = set()
         for leaf_node in self.root.leaf_nodes():
             self.leaf_set.add(leaf_node.taxon.label)
-
 
     def set_block(self,block):
         self.block = block

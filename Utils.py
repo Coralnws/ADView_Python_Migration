@@ -94,7 +94,8 @@ LEFT = 'left'
 RIGHT = 'right'
 PAIRWISE_X_INTERVAL = 7
 PAIRWISE_RIGHT_PADDING = 100
-TREE_PADDING = 20
+TREE_PADDING = 30
+MISSING_TAXA_BLOCK_WIDTH = 420
 
 # type in pairwise
 RT = 'Reference Tree'
@@ -139,7 +140,7 @@ EXCLUDE = 'exclude'
 
 # Sort AD
 ID = 'id'
-RF_DISTANCE = 'rf_distance'
+RF_DISTANCE = 'rf distance'
 SIMILARITY = 'similarity'
 NAME = 'name'
 
