@@ -1,6 +1,6 @@
 from ipycanvas import Canvas, hold_canvas
-from myCanvas import *
-from myUtils import *
+from .myCanvas import *
+from .myUtils import *
 import math
 
 import copy
@@ -119,7 +119,7 @@ class tcCanvas(MyCanvas):
                     continue
                 elif result == BREAK:
                     break
-
+                    
             check_elided = {}
             check_elided['node'] = None
             check_elided['context_level'] = 0

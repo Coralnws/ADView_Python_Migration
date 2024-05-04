@@ -1,5 +1,5 @@
 from ipycanvas import Canvas,MultiCanvas
-from myUtils import *
+from .myUtils import *
 import math
 
 # Use Multicanvas which has multiple canvas layer

@@ -1,0 +1,15 @@
+pyproject.toml
+setup.cfg
+setup.py
+ADViewpy/ADViewpy.py
+ADViewpy/__init__.py
+ADViewpy/myCanvas.py
+ADViewpy/myUtils.py
+ADViewpy/pairwiseCanvas.py
+ADViewpy/rtCanvas.py
+ADViewpy/tcCanvas.py
+ADViewpy/treeDistributionView.py
+ADViewpy.egg-info/PKG-INFO
+ADViewpy.egg-info/SOURCES.txt
+ADViewpy.egg-info/dependency_links.txt
+ADViewpy.egg-info/top_level.txt

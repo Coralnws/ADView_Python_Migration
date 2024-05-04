@@ -94,7 +94,7 @@ LEFT = 'left'
 RIGHT = 'right'
 PAIRWISE_X_INTERVAL = 7
 PAIRWISE_RIGHT_PADDING = 100
-TREE_PADDING = 30
+TREE_PADDING = 20
 MISSING_TAXA_BLOCK_WIDTH = 420
 
 # type in pairwise
@@ -143,6 +143,5 @@ ID = 'id'
 RF_DISTANCE = 'rf distance'
 SIMILARITY = 'similarity'
 NAME = 'name'
-
 
 

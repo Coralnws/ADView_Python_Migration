@@ -2,8 +2,8 @@ import math
 from ipycanvas import Canvas, hold_canvas
 import ipywidgets as widgets
 from IPython.display import display
-from myCanvas import *
-from myUtils import *
+from .myCanvas import *
+from .myUtils import *
 
 class TreeDistributionView:
     # Size
