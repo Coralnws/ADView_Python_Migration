@@ -1,3 +1,4 @@
+
 # CONSTANT
   # COLOR
 BLANK = '#FFFFFF'

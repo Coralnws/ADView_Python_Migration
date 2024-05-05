@@ -636,6 +636,7 @@ class ADViewpy:
         self.rt.name = rt_label
         self.rt.level = 0
         self.rt.pairwise_canvas = None
+        self.rt.missing = set()
 
         # Get tree's taxa/leaf node
         self.rt.taxa_list = [leaf.taxon.label for leaf in self.rt.leaf_nodes()]
@@ -678,7 +679,7 @@ class ADViewpy:
 
             for tree in self.tc:
                 target_set = set(node_taxa) - tree.missing
-                self.rt.missing = tree.missing - set(node_taxa)
+                missing = tree.missing - set(node_taxa)
 
                 node.corr_similarity = 0
                 node.corr.append(0)
@@ -688,7 +689,7 @@ class ADViewpy:
                         tc_node.corr = None
                         tc_node.corr_similarity = 0
 
-                    similarity = self.get_similarity(target_set=target_set,node=node,tc_node=tc_node)
+                    similarity = self.get_similarity(target_set=target_set,node=node,tc_node=tc_node,missing=missing)
                     if similarity > node.corr_similarity:
                         node.corr[tree.id] = tc_node
                         node.corr_similarity = similarity
@@ -713,9 +714,9 @@ class ADViewpy:
 
                             break
 
-    def get_similarity(self,target_set,node,tc_node):
+    def get_similarity(self,target_set,node,tc_node,missing):
         if tc_node.is_leaf():
-            tc_node.card = 0 if tc_node.taxon.label in self.rt.missing else 1
+            tc_node.card = 0 if tc_node.taxon.label in missing else 1
             tc_node.intersect = 1 if tc_node.taxon.label in target_set else 0
         else:
             child_nodes = tc_node.child_nodes()
@@ -738,6 +739,7 @@ class ADViewpy:
 
         return False
 
+
     def not_exist_error(self,tree,pre_function):
         print(f"<Error> : {tree} Not Exist.")
         print(f"Please ensure that you have called the {pre_function} function before calling this function.")
@@ -745,6 +747,7 @@ class ADViewpy:
     def parameter_error(self,parameter):
         print(f"<Error> : {parameter} given was incorrect.")
         print("Please ensure that the information provided is logical.")
+
 
     def no_tree_chosen_error(self):
         print(f"<Error> : No tree was chosen nor given.")
