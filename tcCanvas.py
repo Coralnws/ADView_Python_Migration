@@ -188,7 +188,7 @@ class tcCanvas(MyCanvas):
         result = self.preprocess_ad_tree(self.ad_list)
 
         if result == SPACE_INSUFFICIENT:
-            self.adjust_display_area()
+            self.adjust_display()
             return
 
         self.check_canvas_height(self.ad_list)
@@ -689,7 +689,7 @@ class tcCanvas(MyCanvas):
                 # print("Sufficient space = " + str(sufficient_space))
         return SPACE_SUFFICIENT
 
-    def adjust_display_area(self):
+    def adjust_display(self):
         self.scale_alter = True
         self.scale += 0.1
         self.reset_tc_canvas()
@@ -1319,7 +1319,7 @@ class tcCanvas(MyCanvas):
         result = self.preprocess_ad_tree(self.cluster_ad_list)
 
         if result == SPACE_INSUFFICIENT:
-            self.adjust_display_area()
+            self.adjust_display()
             return
 
         self.check_canvas_height(self.cluster_ad_list)

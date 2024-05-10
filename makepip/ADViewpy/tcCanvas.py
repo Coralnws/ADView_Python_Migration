@@ -35,6 +35,7 @@ class tcCanvas(MyCanvas):
         self.ad_per_row = ad_per_row
         self.context_level = context_level
         self.scale_alter = False
+        self.check_result_list = []
 
         self.cluster_agree_rt = None
 
@@ -119,7 +120,7 @@ class tcCanvas(MyCanvas):
                     continue
                 elif result == BREAK:
                     break
-                    
+
             check_elided = {}
             check_elided['node'] = None
             check_elided['context_level'] = 0
@@ -268,6 +269,8 @@ class tcCanvas(MyCanvas):
                     break
 
             result_list[child] = [result,subtree]
+            if tc_tree.id > 0:
+                self.check_result_list.append(result_list[child])
 
         # Sort by result
         sorted_list = dict(sorted(result_list.items(), key=lambda item: item[1][0]))

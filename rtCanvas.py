@@ -13,8 +13,10 @@ class rtCanvas(MyCanvas):
     NODE_HOVER_LAYER = -2
     RT_LAYER = -1
 
-    def __init__(self,adPy,width,height,view_support,default_rt=None):
-        super().__init__( 8, width = width, height = height)
+
+    def __init__(self,adPy,width,height,view_support,support_value_interval=None,
+                 exact_match_interval=None,default_rt=None):
+        super().__init__( 9, width = width, height = height)
         # Layer 7 - reference tree
         # Layer 6 - hover block
         self.adPy = adPy
@@ -23,7 +25,8 @@ class rtCanvas(MyCanvas):
         self.view_support = view_support
         self.tree_width = 1
         self.dupletree = None
-
+        self.support_value_interval = support_value_interval
+        self.exact_match_interval = exact_match_interval
 
         self.layer_block_list = {}
         self.layer_occupied = [0, 0, 0, 0, 0]
@@ -166,6 +169,7 @@ class rtCanvas(MyCanvas):
                     draw_canvas.fill_text(node.label, node.pos.x + 3, node.pos.y - 8)
                 draw_canvas.fill_style = BLACK
 
+
             # Testing
             # self.draw_dots(node.pos.x + X_INTERVAL - 4, node.pos.y - X_INTERVAL)
             # self.draw_dots(node.pos.x + X_INTERVAL + 4, node.pos.y )
@@ -181,6 +185,11 @@ class rtCanvas(MyCanvas):
                     node.parent_node.block.botR = node.block.botR
             else:
                 node.parent_node.block = Block(node.block.topL,node.block.botR)
+
+        if not node.is_leaf() and level > 0 and node.exact_match == 68:
+            self.draw_rec(node.pos.x, node.pos.y - RT_X_INTERVAL,
+                          RT_X_INTERVAL,
+                          RT_X_INTERVAL - 2, BEIGE, layer_index=-1)
 
 
         node.selected = False
@@ -198,6 +207,24 @@ class rtCanvas(MyCanvas):
         # self.draw_dots(node.pos.x,node.pos.y - X_INTERVAL)
         # self.draw_dots(node.pos.x + X_INTERVAL, node.pos.y)
         # self.draw_dots(node.pos.x + X_INTER0L.y,8,node.range_botR.y - node.range_topL.y,BEIGE)
+
+    # def check_in_attribute_range(self,node):
+    #     #     in_range =
+    #     #     if self.support_value_interval:
+    #     #         if node.support >= self.support_value_interval[0] and node.support <= self.support_value_interval[1]:
+    #     #             in_range = True
+    #     #         else:
+    #     #             in_range = False
+    #     #
+    #     #     if self.exact_match_interval:
+    #     #         if node.exact_match >= self.exact_match_interval[0] and node.exact_match <= self.exact_match_interval[1]:
+    #     #             if
+
+
+
+
+
+
 
     def insert_node_section_list(self,node):
         top_section_index = math.floor(node.mouse_range.topL.y / MIN_SECTION_HEIGHT)

@@ -25,7 +25,6 @@ class TestCorr:
                 new_node = dendropy.Node(taxon=new_taxon, label=letter)
                 self.node_list.append(new_node)
 
-
     def test_similarity(self):
         expected = 1
         actual = 1

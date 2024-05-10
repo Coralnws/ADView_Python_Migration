@@ -4,6 +4,7 @@ import dendropy
 from ipycanvas import Canvas,hold_canvas
 from IPython.display import display
 import os
+import plotly.io as pio
 from myUtils import *
 from myCanvas import *
 from rtCanvas import rtCanvas
@@ -14,6 +15,7 @@ import math
 import numpy as np
 import plotly.express as px
 from sklearn.manifold import TSNE
+import matplotlib.pyplot as plt
 
 def init(treefile = None,type="newick"):
     new_adpy = ADViewpy(treefile, type)
@@ -47,6 +49,14 @@ class ADViewpy:
         self.ad_parameter_alter = True # Record whether ad_canvas's parameter change
 
         self.tree_distribution_view = None
+        self.tree_distance_fig = None
+
+        self.ad_cluster_canvas_export = None
+        self.ad_individual_canvas_export = None
+
+        self.rt_exact_match_range = None
+        self.rt_support_value_range = None
+
 
         # Paiwise canvas related
         self.pairwise_canvas = None
@@ -61,9 +71,13 @@ class ADViewpy:
     # Parameter: view_support (Whether to write support value of internal node on tree)
     # Draw reference tree on canvas
     # User can select subtree through mouse click
-    def reference_tree(self,view_support=False,show=True):
+    def reference_tree(self,view_support=False,show=True,exact_match_range=None,support_value_range=None):
         # Calculate height of canvas
         height = get_leaf_node_amount(self.rt) * RT_Y_INTERVAL + RT_Y_INTERVAL
+        if exact_match_range:
+            self.rt_exact_match_range = exact_match_range
+        if support_value_range:
+            self.rt_support_value_range = support_value_range
 
         if not self.rt_canvas and not self.pairwise_canvas:
             self.default_subtree_attribute()
@@ -199,6 +213,10 @@ class ADViewpy:
            subtree_independent=False,parameter_from_individual_ad=True,differentiate_inexact_match=True,
            show_tree_name=False,export=False):
 
+        if len(self.subtree_list) == 0:
+            print("<Error> : No Subtree Chosen")
+            return
+
         if not self.tc:
             self.not_exist_error(tree="Tree Collection",pre_function="add_tree_collection()")
 
@@ -269,7 +287,6 @@ class ADViewpy:
                                                                   subtree_independent=subtree_independent,show_tree_name=show_tree_name)
 
                     self.ad_individual_canvas_export.TREE_NAME_LAYER = -3
-                    display(self.ad_individual_canvas_export)
                     for index, ad_tree in enumerate(self.ad_individual_canvas_export.ad_list):
                         with hold_canvas(self.ad_individual_canvas_export):
                             self.ad_individual_canvas_export.paste_ad_tree_canvas(ad_tree)
@@ -322,7 +339,7 @@ class ADViewpy:
                 return self.ad_cluster_canvas
 
     # tree_distance() : Function to get all trees' distance scatter ()
-    def tree_distance(self):
+    def tree_distance(self,export=False):
         tsne = TSNE(n_components=2)
         self.tree_point_coordinates = tsne.fit_transform(self.tree_distance_matrix)
 
@@ -340,16 +357,18 @@ class ADViewpy:
         for i in range(len(self.tree_point_coordinates)-1):
             color.append('Tree Collection')
 
-        fig = px.scatter(x=self.x_coor, y=self.y_coor, color=color,
+        self.tree_distance_fig = px.scatter(x=self.x_coor, y=self.y_coor, color=color,
                          title='Tree Distance')
 
         # Customize hover template
-        fig.update_traces(hovertemplate='%{text}',text=id_name, hoverinfo='text')
+        self.tree_distance_fig.update_traces(hovertemplate='%{text}',text=id_name, hoverinfo='text')
         # Remove legend labels
-        fig.update_layout(dragmode=False,showlegend=False,width=600, height=600,plot_bgcolor=TREE_NAME_BG,xaxis=dict(
+        self.tree_distance_fig.update_layout(dragmode=False,showlegend=False,width=600, height=600,plot_bgcolor=TREE_NAME_BG,xaxis=dict(
             color=BLANK),yaxis=dict(color=BLANK))
 
-        fig.show()
+
+        if not export:
+            self.tree_distance_fig.show()
 
     # pairwise_comparison() : Function to show trees' pairwise comparison
     # Compare reference tree with tree from tree collection / Compare two trees from tree collection
@@ -432,11 +451,15 @@ class ADViewpy:
 
         self.image_name = filename
         self.image_type = filetype
+        self.export_canvas = None
 
         if view == RT:
+            if not self.rt_canvas:
+                self.not_exist_error("Reference Tree View", "reference_tree()")
+
             self.export_canvas = self.get_rt_canvas_image()
 
-        if view == AD_INDIVIDUAL:
+        elif view == AD_INDIVIDUAL:
             if not self.ad_individual_canvas or self.check_ad_parameter(tree_id=tree_id,tree_name=tree_name,\
                     ad_interval=ad_interval,
                      sort_by=sort_by,show_tree_name=show_tree_name,scale=scale,
@@ -451,11 +474,17 @@ class ADViewpy:
                                        show_block_proportional=show_block_proportional,
                                        subtree_independent=subtree_independent,context_level=context_level,
                         max_ad=max_ad,export=True)
+            else:
+                self.ad_individual_canvas_export = self.ad_individual_canvas
+
+
+            if not self.ad_individual_canvas_export:
+                return
 
             self.export_canvas = self.get_ad_canvas_image()
 
 
-        if view == AD_CLUSTER:
+        elif view == AD_CLUSTER:
             if not self.ad_cluster_canvas or self.check_cluster_parameter(scale=scale,context_level=context_level,
                                        escape_taxa_as_context_block=escape_taxa_as_context_block,
                                        show_block_proportional=show_block_proportional,
@@ -467,15 +496,55 @@ class ADViewpy:
                                        subtree_independent=subtree_independent,
                                             differentiate_inexact_match=differentiate_inexact_match,export=True)
 
+            else:
+                self.ad_cluster_canvas_export = self.ad_cluster_canvas
+
+            if not self.ad_individual_canvas_export:
+                return
+
             self.export_canvas = self.get_cluster_canvas_image()
 
-        if view == TREE_DISTRIBUTION:
+        elif view == TREE_DISTRIBUTION:
             if not self.tree_distribution_view or not self.tree_distribution_view.export_ready:
                 self.not_exist_error("Tree Distribution View","tree_distribution()")
+                return
 
             self.export_canvas = self.get_tree_distribution_image()
 
-        self.export_canvas.observe(self.save_to_file, "image_data")
+        elif view == PAIRWISE_COMPARISON:
+            if not self.pairwise_canvas:
+                self.not_exist_error("Pairwise Comparison View", "pairwise_comparison()")
+                return
+
+            self.export_canvas = self.get_pairwise_comparison_image()
+
+        elif view == TREE_DISTANCE:
+            if len(self.tc) == 0:
+                print("Tree Collection Not Exist")
+                return
+
+            if not self.tree_distance_fig:
+                self.tree_distance(export=True)
+
+            colors = ['blue'] + ['red'] * (len(self.x_coor) - 1)
+
+            # 绘制散点图
+            plt.scatter(self.x_coor, self.y_coor, color=colors)
+            plt.tick_params(axis='both', which='both', bottom=False, top=False, left=False, right=False,
+                            labelbottom=False, labelleft=False)
+            plt.title('Tree Distance')
+            plt.savefig(f"{self.image_name}.{self.image_type}")
+
+            plt.close()
+
+
+        if not self.export_canvas and view != TREE_DISTANCE:
+            print("<Error> : View type incorrect")
+            return
+
+        if self.export_canvas:
+            self.export_canvas.observe(self.save_to_file, "image_data")
+
 
     ##-------------------------- Internal Functions -----------------------------
     #
@@ -486,6 +555,27 @@ class ADViewpy:
             return sorted(tc_list, key=lambda x: (x.rf_distance, x.name),reverse=False)
         elif sort_by == NAME:
             return sorted(tc_list, key=lambda x: (x.name),reverse=False)
+
+    def get_pairwise_comparison_image(self):
+        pairwise_canvas_image = Canvas(width=self.pairwise_canvas.width, height=self.pairwise_canvas.height,
+                                 sync_image_data=True)
+        pairwise_canvas_image.fill_style = BLANK
+        pairwise_canvas_image.fill_rect(0, 0, self.pairwise_canvas.width, self.pairwise_canvas.height)
+
+
+        if self.pairwise_canvas.compare_between_tc:
+            start_index = 7
+            end_index = 20
+        else:
+            start_index = 0
+            end_index = 13
+
+        with hold_canvas(pairwise_canvas_image):
+            for i in range(start_index,end_index + 1):
+                pairwise_canvas_image.draw_image(self.pairwise_canvas[i], 0, 0)
+
+        pairwise_canvas_image.flush()
+        return pairwise_canvas_image
 
     # Ready canvas for tree dirstribution
     def get_tree_distribution_image(self):
@@ -511,23 +601,26 @@ class ADViewpy:
             label_str = (f"This cluster(#trees={view_tmp.segment_button_clicked.description}) disagrees with branch"
                          f" {subtree_chosen.label} in the reference tree.")
 
-        pointer_x = 20
-        pointer_y = 20
-        rt_subtree_block_canvas_x = pointer_x + view_tmp.nodes_list_canvas.width + 10
-        tree_distribution_canvas.fill_style = BLACK
-        tree_distribution_canvas.font = f'18px Times New Roman'
-        tree_distribution_canvas.fill_text(label_str,pointer_x,pointer_y)
+        with hold_canvas(tree_distribution_canvas):
+            pointer_x = 20
+            pointer_y = 20
+            rt_subtree_block_canvas_x = pointer_x + view_tmp.nodes_list_canvas.width + 10
+            tree_distribution_canvas.fill_style = BLACK
+            tree_distribution_canvas.font = f'18px Times New Roman'
+            tree_distribution_canvas.fill_text(label_str,pointer_x,pointer_y)
 
-        pointer_y += 20
-        tree_distribution_canvas.draw_image(view_tmp.related_tc_tree_canvas, pointer_x, pointer_y)
-        tree_distribution_canvas.draw_image(view_tmp.rt_subtree_block_canvas, rt_subtree_block_canvas_x, pointer_y)
-        pointer_y += view_tmp.related_tc_tree_canvas.height + 10
+            pointer_y += 20
+            tree_distribution_canvas.draw_image(view_tmp.related_tc_tree_canvas, pointer_x, pointer_y)
+            tree_distribution_canvas.draw_image(view_tmp.rt_subtree_block_canvas, rt_subtree_block_canvas_x, pointer_y)
+            pointer_y += view_tmp.related_tc_tree_canvas.height + 10
 
-        tree_distribution_canvas.draw_image(view_tmp.cluster_canvas, pointer_x, pointer_y)
-        pointer_y += view_tmp.cluster_canvas.height + 10
+            tree_distribution_canvas.draw_image(view_tmp.cluster_canvas, pointer_x, pointer_y)
+            pointer_y += view_tmp.cluster_canvas.height + 10
 
-        tree_distribution_canvas.draw_image(view_tmp.nodes_list_canvas, pointer_x, pointer_y)
-        pointer_y += view_tmp.nodes_list_canvas.height + 10
+            tree_distribution_canvas.draw_image(view_tmp.nodes_list_canvas, pointer_x, pointer_y)
+            pointer_y += view_tmp.nodes_list_canvas.height + 10
+
+        tree_distribution_canvas.flush()
 
         return tree_distribution_canvas
 
@@ -581,20 +674,33 @@ class ADViewpy:
 
     # Ready canvas for cluster ad
     def get_cluster_canvas_image(self):
+        if not self.ad_cluster_canvas_export:
+            return None
         cluster_export_canvas = Canvas(width=self.ad_cluster_canvas_export.width, height=
         self.ad_cluster_canvas_export.height, sync_image_data=True)
         cluster_export_canvas.fill_style = BLANK
-        cluster_export_canvas.fill_rect(0, 0, cluster_export_canvas.width, cluster_export_canvas.height)
-        cluster_export_canvas.draw_image(self.ad_cluster_canvas_export[-3], 0, 0)
+
+        with hold_canvas(cluster_export_canvas):
+            cluster_export_canvas.fill_rect(0, 0, cluster_export_canvas.width, cluster_export_canvas.height)
+            cluster_export_canvas.draw_image(self.ad_cluster_canvas_export[-3], 0, 0)
+
+        cluster_export_canvas.flush()
         return cluster_export_canvas
 
     # Ready canvas for tree collection ad
     def get_ad_canvas_image(self):
+        if not self.ad_individual_canvas_export:
+            return None
         ad_export_canvas = Canvas(width=self.ad_individual_canvas_export.width,height =
         self.ad_individual_canvas_export.height,sync_image_data=True)
         ad_export_canvas.fill_style = BLANK
-        ad_export_canvas.fill_rect(0, 0, ad_export_canvas.width, ad_export_canvas.height)
-        ad_export_canvas.draw_image(self.ad_individual_canvas_export[-3],0,0)
+
+
+        with hold_canvas(ad_export_canvas):
+            ad_export_canvas.fill_rect(0, 0, ad_export_canvas.width, ad_export_canvas.height)
+            ad_export_canvas.draw_image(self.ad_individual_canvas_export[-3],0,0)
+
+        ad_export_canvas.flush()
 
         return ad_export_canvas
 
@@ -602,16 +708,23 @@ class ADViewpy:
     def get_rt_canvas_image(self):
         rt_canvas_image = Canvas(width = self.rt_canvas.width,height = self.rt_canvas.height,sync_image_data=True)
         rt_canvas_image.fill_style = BLANK
-        rt_canvas_image.fill_rect(0,0,self.rt_canvas.width,self.rt_canvas.height)
-        for i in range(6):
-            rt_canvas_image.draw_image(self.rt_canvas[i],0,0)
 
-        rt_canvas_image.draw_image(self.rt_canvas[-1], 0, 0)
+        with hold_canvas(rt_canvas_image):
+            rt_canvas_image.fill_rect(0, 0, self.rt_canvas.width, self.rt_canvas.height)
+
+            for i in range(6):
+                rt_canvas_image.draw_image(self.rt_canvas[i],0,0)
+
+            rt_canvas_image.draw_image(self.rt_canvas[-1], 0, 0)
+
+
+        rt_canvas_image.flush()
 
         return rt_canvas_image
 
-    def save_to_file(self):
+    def save_to_file(self,*args, **kwargs):
         # self.export_canvas.to_file("save_file.png")
+        self.output.append("in save_to_file")
         self.export_canvas.to_file(f"{self.image_name}.{self.image_type}")
 
     def print_tree_distribution(self):
@@ -638,8 +751,12 @@ class ADViewpy:
         self.rt.pairwise_canvas = None
         self.rt.missing = set()
 
-        # Get tree's taxa/leaf node
+        self.rt.taxa_list = []
+        self.rt.internal_node = []
+
         self.rt.taxa_list = [leaf.taxon.label for leaf in self.rt.leaf_nodes()]
+
+
 
     def generate_missing_node(self,tree,taxa_name):
         new_taxon = dendropy.Taxon(label=taxa_name)
@@ -792,11 +909,13 @@ class ADViewpy:
         if alter_type == BOTH:
             # self.default_rt_value()
             self.rt_canvas = rtCanvas(self, width=CANVAS_MAX_WIDTH, height=height ,
-                                               view_support=self.rt_view_support, default_rt=self.default_rt)
+                                               view_support=self.rt_view_support, default_rt=self.default_rt,
+                                      exact_match_interval=self.rt_exact_match_range,support_value_interval=self.rt_support_value_range)
             self.pairwise_canvas = pairwiseCanvas(self, width=CANVAS_MAX_WIDTH, height=height)
         elif alter_type == RT:
             self.rt_canvas = rtCanvas(self, width=CANVAS_MAX_WIDTH, height=height,
-                                               view_support=self.view_support, default_rt=self.default_rt)
+                                               view_support=self.view_support, default_rt=self.default_rt,
+                                      exact_match_interval=self.rt_exact_match_range,support_value_interval=self.rt_support_value_range)
         elif alter_type == PAIRWISE:
             self.pairwise_canvas = pairwiseCanvas(self, width=CANVAS_MAX_WIDTH, height=height)
 

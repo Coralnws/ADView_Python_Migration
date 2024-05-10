@@ -71,9 +71,16 @@ class rtCanvas(MyCanvas):
     # Draw reference tree on rtcanvas
     def draw_rt(self,draw_canvas,node=None,level=0):
 
+        if level == 0:
+            draw_canvas.fill_style = BLACK
+            draw_canvas.font = LEAF_FONT
+            draw_canvas.fill_text(self.rt.name, self.x, self.y)
+            self.y += RT_Y_INTERVAL + 5
+
         # Default : Tree root as reference tree's root
         if node is None:
             node = self.rt.seed_node
+
 
         node.is_missing = False
         for child in node.child_node_iter():

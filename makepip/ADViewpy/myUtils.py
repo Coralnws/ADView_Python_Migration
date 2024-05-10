@@ -1,3 +1,4 @@
+
 # CONSTANT
   # COLOR
 BLANK = '#FFFFFF'
@@ -100,11 +101,13 @@ MISSING_TAXA_BLOCK_WIDTH = 420
 # type in pairwise
 RT = 'Reference Tree'
 TC = 'Tree Collection'
-REDRAW_BLOCK_IN_PAIRWISE = 'redraw'
+PAIRWISE_COMPARISON = 'Pairwise Comparison'
+TREE_DISTANCE = 'Tree Distance'
 
+REDRAW_BLOCK_IN_PAIRWISE = 'redraw'
 # Alter type
 BOTH = 'rt and pairwise'
-PAIRWISE = 'pairwise'
+PAIRWISE  = 'pairwise'
 
 # REC sice
 UP = 'upper side'

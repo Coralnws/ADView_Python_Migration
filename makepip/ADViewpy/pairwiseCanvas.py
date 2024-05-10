@@ -86,6 +86,7 @@ class pairwiseCanvas(MyCanvas):
 
         self.max_level += 5
         self.default_value(align=LEFT)
+        self.left_tree = self.adPy.rt
         with hold_canvas(self):
             self.draw_tree(self[self.RT_LAYER], type=RT,align=LEFT, node=self.rt.seed_node, level=0)
 
@@ -130,7 +131,7 @@ class pairwiseCanvas(MyCanvas):
             self.setup_section_list([self.right_tree_section_list])
 
         # Common value
-        self.y = 30
+        self.y = 45
 
     def get_max_level(self,tree):
         max_level = 0
@@ -142,6 +143,22 @@ class pairwiseCanvas(MyCanvas):
 
     def draw_tree(self, draw_canvas, type,align, node, level=0):   # align = left or right
         # Default : Tree root as reference tree's root
+        if level == 0:
+            if align == LEFT:
+                tree_name = self.left_tree.name
+                draw_canvas.text_align = LEFT
+                x = self.x - 20
+            else:
+                tree_name = self.right_tree.name
+                draw_canvas.text_align = RIGHT
+                x = self.x + 100
+
+            draw_canvas.fill_style = BLACK
+            draw_canvas.font = LEAF_FONT
+
+            draw_canvas.fill_text(tree_name,x,self.y)
+
+            self.y += RT_Y_INTERVAL + 5
 
         node.is_missing = False
         for child in node.child_node_iter():
@@ -1039,8 +1056,8 @@ class pairwiseCanvas(MyCanvas):
 
 
     def reset_subtree_canvas(self):
-        for i in range(0,22):
-            if i == 5 or i == 13 or i == 20:
+        for i in range(6,22):
+            if i == 13 or i == 20:
                 continue
             self[i].clear()
 
