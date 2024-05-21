@@ -225,7 +225,7 @@ class ADViewpy:
     def AD(self,view=AD_INDIVIDUAL,scale=1.0,max_ad=None,context_level=2,ad_interval=None,tree_id=None,
            tree_name=None,filter=INCLUDE,sort=RF_DISTANCE,escape_taxa_as_context_block=True,show_block_proportional=True,
            subtree_independent=False,parameter_from_individual_ad=True,differentiate_inexact_match=True,
-           show_tree_name=False,export=False):
+           show_tree_name=False,export=False,compress_escape_taxa=True):
 
         if len(self.subtree_list) == 0:
             print("<Error> : No Subtree Chosen")
@@ -299,7 +299,7 @@ class ADViewpy:
                                                                 escape_taxa_as_context_block=escape_taxa_as_context_block,
                                                                 show_block_proportional=show_block_proportional,
                                                                 subtree_independent=subtree_independent,
-                                                                show_tree_name=show_tree_name)
+                                                                show_tree_name=show_tree_name,compress_escape_taxa=compress_escape_taxa)
 
                     self.ad_individual_canvas_export.TREE_NAME_LAYER = -3
                     for index, ad_tree in enumerate(self.ad_individual_canvas_export.ad_list):
@@ -317,7 +317,8 @@ class ADViewpy:
                                                          escape_taxa_as_context_block=escape_taxa_as_context_block,
                                                          show_block_proportional=show_block_proportional,
                                                          subtree_independent=subtree_independent,
-                                                         show_tree_name=show_tree_name)
+                                                         show_tree_name=show_tree_name,
+                                                         compress_escape_taxa=compress_escape_taxa)
                     display(self.ad_individual_canvas)
                     for index, ad_tree in enumerate(self.ad_individual_canvas.ad_list):
                         with hold_canvas(self.ad_individual_canvas):
@@ -944,12 +945,21 @@ class ADViewpy:
         elif alter_type == PAIRWISE:
             self.pairwise_canvas = pairwiseCanvas(self, width=CANVAS_MAX_WIDTH, height=height)
 
-
-    def check_parameter_alter(self,view_support):
+    def check_parameter_alter(self, view_support, exact_match_range, support_value_range):
         # Check whether parameter has alter and set parameter as self.attribute
         if view_support != self.rt_view_support:
             self.rt_view_support = view_support
-            return True
+            return REDRAW
+
+        self.output.append(self.rt_exact_match_range)
+        self.output.append(exact_match_range)
+        if exact_match_range != self.rt_exact_match_range:
+            self.rt_exact_match_range = exact_match_range
+            return FILTER_NODE
+
+        if support_value_range != self.rt_support_value_range:
+            self.rt_support_value_range = support_value_range
+            return FILTER_NODE
 
     def check_attribute_range(self,interval_list):
 
@@ -966,6 +976,7 @@ class ADViewpy:
 
     def select_subtree_from_tree(self,node_selected):
         if not hasattr(node_selected, 'selected') or node_selected.selected == False:
+            self.output.append("node is not selected")
             self.ad_parameter_alter = True
             # Ignore if 5 subtree had selected
             if len(self.subtree_list) >= 5:

@@ -420,7 +420,7 @@ class pairwiseCanvas(MyCanvas):
         subtree_root = False
 
         current_time = time.time()
-        if current_time - self.last_draw_time > 0.2:
+        if current_time - self.last_draw_time > 0.1:
             self.last_draw_time = current_time
 
             # Filter node
@@ -734,59 +734,101 @@ class pairwiseCanvas(MyCanvas):
         new_subtree.set_pairwise_block(new_block)
 
         if select_tree == RT:
-            first_layer = 0
-            last_layer = 5
-        elif select_tree == TC:
-            if align == RIGHT:
-                first_layer = 7
-                last_layer = 12
-            else:
-                first_layer = 14
-                last_layer = 19
-
-        if select_tree == RT:
-            self.draw_subtree_list = sorted(self.adPy.subtree_list, key=lambda x: x.block_size,reverse=True)
+            draw_layer = self.get_layer_index(subtree=new_subtree,tmp_layer_occupied=self.rt_layer_occupied,
+                                              tmp_layer_block_list=self.rt_layer_block_list,
+                                              align=align,type=select_tree)
         else:
             if align == LEFT:
-                self.draw_subtree_list = sorted(self.tc_left_subtree_list, key=lambda x: x.block_size,reverse=True)
+                draw_layer = self.get_layer_index(subtree=new_subtree, tmp_layer_occupied=self.tc_left_layer_occupied,
+                                                  tmp_layer_block_list=self.tc_left_layer_block_list,
+                                                  align=align, type=select_tree)
+
+                draw_layer += 14
             else:
-                self.draw_subtree_list = sorted(self.tc_right_subtree_list, key=lambda x: x.block_size, reverse=True)
+                draw_layer = self.get_layer_index(subtree=new_subtree, tmp_layer_occupied=self.tc_right_layer_occupied,
+                                                  tmp_layer_block_list=self.tc_right_layer_block_list,
+                                                  align=align, type=select_tree)
 
-        subtree_cnt = len(self.draw_subtree_list)
-        tmp_sorted_layer_list = []
-        for i in range(first_layer,first_layer + subtree_cnt):
-            if select_tree == RT:
-                subtree = self.draw_subtree_list[i]
-            else:
-                if align == RIGHT:
-                    subtree = self.draw_subtree_list[i - 7]
-                else:
-                    subtree = self.draw_subtree_list[i - 14]
+                draw_layer += 7
 
-            subtree_block = subtree.pairwise_block
-            tmp_sorted_layer_list.append(subtree.label)
+        # draw_layer = self.get_layer_index(subtree=new_subtree,align=align,type=select_tree)
 
-            self[i].clear()
-            if subtree.root.is_missing:
-                subtree_block = subtree.root.pairwise_block
+        if new_subtree.root.is_missing:
+            subtree_block = new_subtree.root.pairwise_block
+        else:
+            subtree_block = new_subtree.pairwise_block
 
-            self.draw_subtree_rec(subtree_block=subtree_block,subtree=subtree,layer_index=i)
-            # self.draw_rec(subtree_block.topL.x, subtree_block.topL.y, subtree_block.width, subtree_block.height,subtree.color,
-            #           layer_index=i)
+        self.output.append(f"before draw rec:")
+        self.output.append(f"draw_layer : {draw_layer}")
 
-            if subtree.root.is_missing == False:
-                self.write_block_label(subtree, i,align=align)
+        self.draw_subtree_rec(subtree_block=subtree_block,subtree=new_subtree,layer_index=draw_layer)
 
-            self[i].label = subtree.label
-            self[i].flush()
+        if new_subtree.root.is_missing == False:
+            self.write_block_label(new_subtree, draw_layer,align=align)
 
-        if select_tree == RT:
-            self.rt_sorted_layer_list = tmp_sorted_layer_list
-        elif select_tree == TC:
-            if align == LEFT:
-                self.tc_left_sorted_layer_list = tmp_sorted_layer_list
-            else:
-                self.tc_right_sorted_layer_list = tmp_sorted_layer_list
+
+        self[draw_layer].label = new_subtree.label
+        self[draw_layer].flush()
+
+
+    # def draw_subtree_block(self,node_selected,select_tree=None,new_subtree=None,subtree_from_rt=None,align=None):
+    #     new_block = self.generate_subtree_block(node_selected, align=align)
+    #     new_subtree.set_pairwise_block(new_block)
+    # 
+    #     if select_tree == RT:
+    #         first_layer = 0
+    #         last_layer = 5
+    #     elif select_tree == TC:
+    #         if align == RIGHT:
+    #             first_layer = 7
+    #             last_layer = 12
+    #         else:
+    #             first_layer = 14
+    #             last_layer = 19
+    # 
+    #     if select_tree == RT:
+    #         self.draw_subtree_list = sorted(self.adPy.subtree_list, key=lambda x: x.block_size,reverse=True)
+    #     else:
+    #         if align == LEFT:
+    #             self.draw_subtree_list = sorted(self.tc_left_subtree_list, key=lambda x: x.block_size,reverse=True)
+    #         else:
+    #             self.draw_subtree_list = sorted(self.tc_right_subtree_list, key=lambda x: x.block_size, reverse=True)
+    # 
+    #     subtree_cnt = len(self.draw_subtree_list)
+    #     tmp_sorted_layer_list = []
+    #     for i in range(first_layer,first_layer + subtree_cnt):
+    #         if select_tree == RT:
+    #             subtree = self.draw_subtree_list[i]
+    #         else:
+    #             if align == RIGHT:
+    #                 subtree = self.draw_subtree_list[i - 7]
+    #             else:
+    #                 subtree = self.draw_subtree_list[i - 14]
+    # 
+    #         subtree_block = subtree.pairwise_block
+    #         tmp_sorted_layer_list.append(subtree.label)
+    # 
+    #         self[i].clear()
+    #         if subtree.root.is_missing:
+    #             subtree_block = subtree.root.pairwise_block
+    # 
+    #         self.draw_subtree_rec(subtree_block=subtree_block,subtree=subtree,layer_index=i)
+    #         # self.draw_rec(subtree_block.topL.x, subtree_block.topL.y, subtree_block.width, subtree_block.height,subtree.color,
+    #         #           layer_index=i)
+    # 
+    #         if subtree.root.is_missing == False:
+    #             self.write_block_label(subtree, i,align=align)
+    # 
+    #         self[i].label = subtree.label
+    #         self[i].flush()
+    # 
+    #     if select_tree == RT:
+    #         self.rt_sorted_layer_list = tmp_sorted_layer_list
+    #     elif select_tree == TC:
+    #         if align == LEFT:
+    #             self.tc_left_sorted_layer_list = tmp_sorted_layer_list
+    #         else:
+    #             self.tc_right_sorted_layer_list = tmp_sorted_layer_list
     def draw_subtree_rec(self,subtree_block,subtree,layer_index):
         if hasattr(subtree.root,'duplicate_subtree') and subtree.root.duplicate_subtree:
             subtree_list = subtree.root.subtree
@@ -801,20 +843,28 @@ class pairwiseCanvas(MyCanvas):
     def remove_subtree_block(self,subtree):
         # Clear corresponding rt layer
         try:
-            tc_clear_layer = None
-            clear_layer = self.rt_sorted_layer_list.index(subtree.label)
+            left_clear_layer = None
+            right_clear_layer = None
 
+            # CLear reference tree layer
+            clear_layer = self.rt_sorted_layer_list.index(subtree.label)
             self[clear_layer].clear()
+
+            del self.rt_layer_block_list[subtree.label]
+            self.rt_sorted_layer_list.remove(subtree.label)
+            self.rearrange_canvas_layer(clear_layer_index=clear_layer, type=RT, align=LEFT)
+            self.rt_layer_occupied[len(self.rt_sorted_layer_list)] = 0
 
             if self.tc_tree:
                 if self.compare_between_tc:
                     if subtree.label in self.tc_left_sorted_layer_list:
-                        left_clear_layer = self.tc_left_sorted_layer_list.index(subtree.label)
-                        self[left_clear_layer + 14].clear()
+                        left_clear_layer = self.tc_left_sorted_layer_list.index(subtree.label) + 14
+
+                        self[left_clear_layer].clear()
 
                 if subtree.label in self.tc_right_sorted_layer_list:
-                    right_clear_layer = self.tc_right_sorted_layer_list.index(subtree.label)
-                    self[right_clear_layer + 7].clear()
+                    right_clear_layer = self.tc_right_sorted_layer_list.index(subtree.label) + 7
+                    self[right_clear_layer].clear()
 
             if self.compare_between_tc:
                 left_subtree = self.get_subtree(self.tc_left_subtree_list, subtree.label)
@@ -824,11 +874,19 @@ class pairwiseCanvas(MyCanvas):
                         left_subtree.root.duplicate_subtree = False
                         left_subtree.root.subtree = left_subtree.root.subtree[0]
 
-                        redraw_layer = self.tc_right_sorted_layer_list.index(left_subtree.root.subtree.label)
-                        redraw_layer += 14
+                        redraw_layer = self.tc_right_sorted_layer_list.index(left_subtree.root.subtree.label) + 14
                         self[redraw_layer].clear()
                         self.draw_subtree_rec(left_subtree.root.subtree.pairwise_block, left_subtree.root.subtree,
                                               redraw_layer)
+
+                else:
+                    self.reset_node(left_subtree.root)
+
+                del self.tc_left_layer_block_list[subtree.label]
+                self.tc_left_sorted_layer_list.remove(subtree.label)
+                self.rearrange_canvas_layer(clear_layer_index=left_clear_layer, type=TC, align=LEFT)
+                self.tc_left_layer_occupied[len(self.rt_sorted_layer_list)] = 0
+
 
                 self.tc_left_subtree_list.remove(left_subtree)
                 self.remove_escape_taxa(subtree.label,self.left_escape_taxa_list)
@@ -843,9 +901,18 @@ class pairwiseCanvas(MyCanvas):
 
                         redraw_layer = self.tc_right_sorted_layer_list.index(right_subtree.root.subtree.label)
                         redraw_layer += 7
+                        self.output.append(f"redraw layer = {redraw_layer}")
                         self[redraw_layer].clear()
                         self.draw_subtree_rec(right_subtree.root.subtree.pairwise_block,right_subtree.root.subtree,
                                               redraw_layer)
+
+                else:
+                    self.reset_node(right_subtree.root)
+
+                del self.tc_right_layer_block_list[subtree.label]
+                self.tc_right_sorted_layer_list.remove(subtree.label)
+                self.rearrange_canvas_layer(clear_layer_index=right_clear_layer, type=TC, align=RIGHT)
+                self.tc_right_layer_occupied[len(self.rt_sorted_layer_list)] = 0
 
                 self.tc_right_subtree_list.remove(right_subtree)
 
@@ -858,7 +925,12 @@ class pairwiseCanvas(MyCanvas):
 
         except Exception as err:
             self[-1].fill_text("Loading", self.width - 200, 20)
-            
+
+    def reset_node(self,node):
+        self.output.append("in reset node")
+        node.duplicate_subtree = False
+        node.subtree = None
+
     def setup_tc_subtree_list(self,tree,align):
         for index,subtree in enumerate(self.adPy.subtree_list):
             subtree.root.duplicate_subtree = False
@@ -951,6 +1023,83 @@ class pairwiseCanvas(MyCanvas):
                 corresponding_subtree.subtree.append(new_subtree)
 
         corresponding_subtree.selected = True
+
+    def get_layer_index(self,subtree,tmp_layer_block_list,tmp_layer_occupied,align=None,type=None):
+        tmp_layer_block_list[subtree.label] = subtree.block_size  # { 'label' : block-size }
+        tmp_sorted_layer_list = sorted(tmp_layer_block_list, key=lambda x: tmp_layer_block_list[x], reverse=True)
+
+        if type == RT:
+            self.rt_sorted_layer_list = tmp_sorted_layer_list
+        elif type == TC:
+            if align == LEFT:
+                self.tc_left_sorted_layer_list = tmp_sorted_layer_list
+            else:
+                self.tc_right_sorted_layer_list = tmp_sorted_layer_list
+
+        # If no subtree selected
+        if tmp_layer_occupied.count(1) == 0:
+            tmp_layer_occupied[0] = 1
+            return 0
+
+        # If new_subtree is smaller than all existing subtree
+        if all(subtree.block_size <= value for value in tmp_layer_block_list.values()):
+            index = tmp_layer_occupied.index(0)
+            tmp_layer_occupied[index] = 1
+            return index
+
+        # If need to sort multicanvas layer - shift layers in list to the right
+
+        next_index = tmp_layer_occupied.index(0)
+        tmp_layer_occupied[next_index] = 1
+
+        subtree_layer_index = tmp_sorted_layer_list.index(subtree.label)
+        if type == TC:
+            if align == LEFT:
+                next_index += 14
+                subtree_layer_index += 14
+            else:
+                next_index += 7
+                subtree_layer_index += 7
+
+        self.output.append(f"check next index : {next_index}")
+        self.output.append(f"check subtree index : {subtree_layer_index}")
+
+        canvas_tmp = Canvas(width=self.width, height=self.height)
+        for i in range(next_index, subtree_layer_index , -1):
+            canvas_tmp.clear()
+            canvas_tmp.draw_image(self[i-1],0,0)
+            self[i].clear()
+            self[i].draw_image(canvas_tmp,0,0)
+
+        self.output.append("after redraw")
+
+
+
+        index = tmp_sorted_layer_list.index(subtree.label)
+        tmp_layer_occupied[index] = 1
+        return index
+
+    def rearrange_canvas_layer(self, clear_layer_index, type, align):
+        if type == RT:
+            first_layer = 0
+            last_layer = 5
+        elif type == TC:
+            if align == RIGHT:
+                first_layer = 7
+                last_layer = 12
+            else:
+                first_layer = 14
+                last_layer = 19
+
+        self.output.append(f"type {type},align {align},first_layer {first_layer},last_layer {last_layer}")
+
+        canvas_tmp = Canvas(width=self.width, height=self.height)
+        for i in range(clear_layer_index, last_layer):
+            canvas_tmp.clear()
+            if i < last_layer - 1:
+                canvas_tmp.draw_image(self[i + 1], 0, 0)
+            self[i].clear()
+            self[i].draw_image(canvas_tmp, 0, 0)
 
     def compare_tc_tree(self,compare_tree=None,compare_between_tc=False):
         self[self.TC_LEFT_LAYER].clear()

@@ -18,7 +18,8 @@ class tcCanvas(MyCanvas):
     def __init__(self,adPy,view,ad_per_row=DEFAULT_AD_PER_ROW,width=1100, height=1100,scale=1.0,max_ad=None,
                  context_level=2,filter=INCLUDE,first_ad=None,last_ad=None,tree_id=None,tree_name=None,sort_by=ID,
                  escape_taxa_as_context_block=True,show_block_proportional=False,parameter_from_individual_ad=True,
-                 subtree_independent=True,differentiate_inexact_match=True,layer=5,show_tree_name=False):
+                 subtree_independent=True,differentiate_inexact_match=True,layer=5,show_tree_name=False,
+                 compress_escape_taxa=True):
         super().__init__(layer = layer + 4, width = width, height = height)
 
         # Common attribute
@@ -37,6 +38,7 @@ class tcCanvas(MyCanvas):
         self.scale_alter = False
         self.check_result_list = []
         self.filter_type = filter
+        self.compress_escape_taxa = compress_escape_taxa
 
         self.cluster_agree_rt = None
 
@@ -130,6 +132,7 @@ class tcCanvas(MyCanvas):
             check_elided = {}
             check_elided['node'] = None
             check_elided['context_level'] = 0
+
             self.construct_ad(tc_tree=tc_tree, level=1, check_elided=check_elided)
 
             self.ad_drawn += 1
@@ -230,7 +233,6 @@ class tcCanvas(MyCanvas):
         # self.draw_ad_tree_rec(self.ad_list)
 
     def construct_ad(self,tc_tree,construct_rt=False,tc_node=None,current_ad_node=None,level=0,nested_subtree=None,nested_ad=None,check_elided={},nested_subtree_duplicate=False):
-
         if tc_node is None and current_ad_node is None: # When start from root
             tc_node = tc_tree.seed_node
             tc_node.index = 0
@@ -262,15 +264,6 @@ class tcCanvas(MyCanvas):
 
                     return
 
-            # if result == NON_DESCENDANT:
-            #     self.generate_block_by_result(result=result, subtree=None, tc_tree=tc_tree, tc_node=tc_node,
-            #                                   current_ad_node=current_ad_node, level=level,
-            #                                   nested_subtree=nested_subtree, nested_ad=nested_ad,
-            #                                   check_elided=check_elided,
-            #                                   nested_subtree_duplicate=nested_subtree_duplicate)
-            #     return
-
-
         result_list = {}
 
         for index,child in enumerate(tc_node.child_node_iter()):
@@ -289,10 +282,6 @@ class tcCanvas(MyCanvas):
                     result = result_tmp
 
                 if result == SUBTREE_ROOT or result == INDEPENDENT_LEAF:
-                    # subtree_prior = 5 - SUBTREE_LABEL_LIST.index(subtree.label)
-                    # print(f"subtree_prior = {subtree_prior}")
-                    # result -= subtree_prior
-                    # print(f"result = {result}")
                     break
 
             result_list[child] = [result,subtree]
@@ -303,10 +292,9 @@ class tcCanvas(MyCanvas):
         sorted_list = dict(sorted(result_list.items(), key=lambda item: item[1][0]))
         check_result = { value[0] for value in sorted_list.values() }
 
-
-        if len(check_result) == 1:
+        if len(check_result) == 1 or 0 in check_result or 1 in check_result:
             # Elided stop here
-            if check_elided['node'] and check_elided['context_level'] >= self.context_level:
+            if check_elided['node'] and check_elided['context_level'] > self.context_level:
                 ori_child = check_elided['node'].children.pop()
 
                 parent = check_elided['node']
@@ -320,14 +308,19 @@ class tcCanvas(MyCanvas):
                     nested_ad.insert_node(parent, current_ad_node)
                 else:
                     self.ad_constructing.insert_node(parent, current_ad_node)
+            else:
+                check_elided['node'] = None
+                check_elided['context_level'] = 0
 
         for node,result in sorted_list.items():
             self.generate_block_by_result(result=result[0],subtree=result[1],tc_tree=tc_tree,tc_node=node,current_ad_node=current_ad_node,level=level,nested_subtree=nested_subtree,nested_ad=nested_ad,check_elided=check_elided,nested_subtree_duplicate=nested_subtree_duplicate)
 
+            # self.ad_constructing.plot_tree()
+            # print(check_elided)
 
     def generate_block_by_result(self,result,subtree,tc_tree,tc_node=None,current_ad_node=None,level=0,nested_subtree=None,nested_ad=None,check_elided={},nested_subtree_duplicate=False):
         if result == INDEPENDENT_LEAF:
-            # print("INDEPENDENT_LEAF")
+            # print(f"result {result}")
             # if self.escape_taxa_as_context_block and not nested_subtree_duplicate:
             #     return
 
@@ -337,29 +330,34 @@ class tcCanvas(MyCanvas):
             independent_leaf_block = self.individual_block(subtree=subtree, type=INDIVIDUAL_LEAF_BLOCK)
             independent_leaf_block.color = subtree.color
             independent_leaf_block.root = tc_node
-            independent_leaf_block.taxa_list.add(tc_node.taxon.label)
+            if tc_node.taxon:
+                independent_leaf_block.taxa_list.add(tc_node.taxon.label)
             independent_leaf_block.subtree_taxa_count = 1
             new_ad_node = AD_Node(node_or_block=independent_leaf_block, x_level=level, type=LEAF,
                                         child_index=tc_node.index,type_prior=result)
 
 
-            if not self.escape_taxa_as_context_block and check_elided['node'] and check_elided['context_level'] >=self.context_level:
-                ori_child = check_elided['node'].children.pop()
-                current_ad_node.child_index = ori_child.child_index
-                if nested_ad:
-                    nested_ad.insert_node(check_elided['node'], current_ad_node)
+            if not self.escape_taxa_as_context_block:
+                if check_elided['node'] and check_elided['context_level'] > self.context_level:
+
+                    ori_child = check_elided['node'].children.pop()
+                    parent = check_elided['node']
+
+                    current_ad_node.child_index = ori_child.child_index
+                    if nested_ad:
+                        nested_ad.insert_node(parent, current_ad_node)
+                    else:
+                        self.ad_constructing.insert_node(parent, current_ad_node)
+
+                    current_ad_node.x_level = ori_child.x_level + 1
+                    new_ad_node.x_level = current_ad_node.x_level + 1
+                    current_ad_node.is_elided = True
+                    check_elided['node'] = None
+                    check_elided['context_level'] = 0
+
                 else:
-                    self.ad_constructing.insert_node(check_elided['node'], current_ad_node)
-
-                current_ad_node.x_level = ori_child.x_level + 1
-                new_ad_node.x_level = current_ad_node.x_level + 1
-                current_ad_node.is_elided = True
-                check_elided['node'] = None
-                check_elided['context_level'] = 0
-
-            elif not self.escape_taxa_as_context_block:
-                check_elided['node'] = None
-                check_elided['context_level'] = 0
+                    check_elided['node'] = None
+                    check_elided['context_level'] = 0
 
             if nested_ad:
                 nested_ad.insert_node(current_ad_node, new_ad_node)
@@ -370,7 +368,7 @@ class tcCanvas(MyCanvas):
             # current_ad_node.children.append(new_ad_node)
 
         elif result == SUBTREE_ROOT or result == DUPLICATE_SUBTREE_ROOT:
-            # print("SUBTREE_ROOT")
+            # print(f"result {result}")
             # taxa_list = all taxa under corresponding subtree
             # subtree_taxa_count = taxa of reference subtree exist in this corresponding subtree
             # if corresponding subtree exactly same as reference subtree
@@ -398,8 +396,6 @@ class tcCanvas(MyCanvas):
                 for count in subtree_block.duplicate_subtree_taxa_count:
                     subtree_block.subtree_taxa_count += count
 
-
-
             else:
                 subtree_block = self.ad_subtree_block(subtree=subtree,subtree_duplicate=False)
                 subtree.check_and_set_topology(tc_node,tc_tree.id)
@@ -419,9 +415,9 @@ class tcCanvas(MyCanvas):
             new_ad_node = AD_Node(node_or_block=subtree_block, x_level=level, type=LEAF,
                                         child_index=tc_node.index,type_prior=result)
 
-            if check_elided['node'] and check_elided['context_level'] >= self.context_level:
-                ori_child = check_elided['node'].children.pop()
 
+            if check_elided['node'] and check_elided['context_level'] > self.context_level:
+                ori_child = check_elided['node'].children.pop()
                 parent = check_elided['node']
                 if not subtree_block.exact_match and not self.escape_taxa_as_context_block:
                     current_ad_node.child_index = ori_child.child_index
@@ -450,15 +446,14 @@ class tcCanvas(MyCanvas):
                         self.ad_constructing.insert_node(parent, new_ad_node)
 
             else:
+
                 check_elided['node'] = None
                 check_elided['context_level'] = 0
+
                 if nested_ad:
                     nested_ad.insert_node(current_ad_node, new_ad_node)
                 else:
                     self.ad_constructing.insert_node(current_ad_node, new_ad_node)
-
-
-            # current_ad_node.children.append(new_ad_node)
 
             if tc_node.is_leaf():
                 return
@@ -562,13 +557,19 @@ class tcCanvas(MyCanvas):
         # If node from tc is target leaf node in this subtree
         if node.is_leaf():
             if node.taxon.label in subtree.leaf_set:
-                return INDEPENDENT_LEAF
+                if not self.escape_taxa_as_context_block:
+                    return INDEPENDENT_LEAF
 
         if self.check_leaf_node_descendant(subtree,node) == IS_DESCENDANT:
             if self.escape_taxa_as_context_block:
                 if nested_subtree_duplicate or self.check_subtree_in_descendant(node,tree_index=tree_index):
                     return IS_DESCENDANT
             else:
+                if self.compress_escape_taxa:
+                    leaf_nodes = {leaf.taxon.label for leaf in node.leaf_nodes()}
+                    if leaf_nodes.issubset(subtree.leaf_set):
+                        return INDEPENDENT_LEAF
+
                 return IS_DESCENDANT
 
         # If current branch has no target taxa
@@ -579,7 +580,6 @@ class tcCanvas(MyCanvas):
 
         if leaf_nodes.intersection(subtree.leaf_set):
             return IS_DESCENDANT
-
         else:
             return False
 
@@ -1090,7 +1090,6 @@ class tcCanvas(MyCanvas):
             # Draw horizontal branch
             self.draw_solid_line(node.branch_head, node.branch_tail, BLACK, layer_index,canvas=canvas)
 
-        # Draw children's branches
         for child in node.children:
             if child.is_elided:
                 self.draw_elided_branch(child.branch_head, child.branch_tail, BLACK, layer_index,canvas=canvas)

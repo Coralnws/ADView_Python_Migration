@@ -291,10 +291,22 @@ class AD_Tree:
             block = node.node_or_block
 
             if block.type == SUBTREE_BLOCK:
-                print(' ' * (level * 4) + block.belong_subtree.label + ':' + str(block.subtree_taxa_count))
-            elif block.type == INDIVIDUAL_BLOCK:
+                if type(block.belong_subtree) is list:
+                    str = ""
+                    for subtree in block.belong_subtree:
+                        str += subtree.label + "&"
+                    print(' ' * (level * 4) + str[:-1] + ':' )
+                else:
+                    print(' ' * (level * 4) + block.belong_subtree.label + ':')
+            elif block.type == INDIVIDUAL_BLOCK or block.type == INDIVIDUAL_LEAF_BLOCK:
                 if block.belong_subtree:
-                    print(' ' * (level * 4) + block.belong_subtree.label + ': INDIVIDUAL LEAF')
+                    if type(block.belong_subtree) is list:
+                        for subtree in block.belong_subtree:
+                            str += subtree.label + "&"
+
+                        print(' ' * (level * 4) + str[:-1] + ': INDIVIDUAL LEAF')
+                    else:
+                        print(' ' * (level * 4) + block.belong_subtree.label + ': INDIVIDUAL LEAF')
                 else:
                     print(' ' * (level * 4) + 'INDV BLANK BLOCK')
 
