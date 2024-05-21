@@ -413,8 +413,8 @@ class TreeDistributionView:
         subtree_layer = rt_canvas.sorted_layer_list.index(self.subtree_chosen.label)
 
         self.rt_subtree_canvas_tmp.draw_image(rt_canvas[subtree_layer], 0, 0)
-        self.rt_subtree_canvas_tmp.draw_image(rt_canvas[-1],0,0)
         self.rt_subtree_canvas_tmp.draw_image(rt_canvas[-3],0,0)
+        self.rt_subtree_canvas_tmp.draw_image(rt_canvas[-4],0,0)
 
         block = self.subtree_chosen.block
         self.rt_subtree_block_canvas = Canvas(width=block.width, height=block.height)

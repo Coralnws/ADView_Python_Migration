@@ -327,7 +327,7 @@ class rtCanvas(MyCanvas):
 
     def mouse_hover(self, x, y):
         current_time = time.time()
-        if current_time - self.last_draw_time > 0.1:
+        if current_time - self.last_draw_time > 0.15:
             self.last_draw_time = current_time
             node_selected = self.filter_node_from_section_list(x, y)
 

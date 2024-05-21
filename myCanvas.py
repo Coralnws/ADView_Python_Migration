@@ -509,6 +509,11 @@ class AD_Topology:
                 if subtree_label == block.belong_subtree.label:
                     block.exact_match = False
 
+class Escape_Taxa:
+    def __init__(self, node):
+        self.node = node
+        self.subtree_list = []
+        self.escape_taxa_block = None
 
 def hex_to_rgb(hex_color):
     hex_color = hex_color.lstrip('#')

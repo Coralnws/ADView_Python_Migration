@@ -294,7 +294,7 @@ class tcCanvas(MyCanvas):
 
         if len(check_result) == 1 or 0 in check_result or 1 in check_result:
             # Elided stop here
-            if check_elided['node'] and check_elided['context_level'] > self.context_level:
+            if check_elided['node'] and check_elided['context_level'] >= self.context_level:
                 ori_child = check_elided['node'].children.pop()
 
                 parent = check_elided['node']
@@ -338,7 +338,7 @@ class tcCanvas(MyCanvas):
 
 
             if not self.escape_taxa_as_context_block:
-                if check_elided['node'] and check_elided['context_level'] > self.context_level:
+                if check_elided['node'] and check_elided['context_level'] >= self.context_level:
 
                     ori_child = check_elided['node'].children.pop()
                     parent = check_elided['node']
@@ -416,7 +416,7 @@ class tcCanvas(MyCanvas):
                                         child_index=tc_node.index,type_prior=result)
 
 
-            if check_elided['node'] and check_elided['context_level'] > self.context_level:
+            if check_elided['node'] and check_elided['context_level'] >= self.context_level:
                 ori_child = check_elided['node'].children.pop()
                 parent = check_elided['node']
                 if not subtree_block.exact_match and not self.escape_taxa_as_context_block:
@@ -512,7 +512,7 @@ class tcCanvas(MyCanvas):
             if check_elided['node'] != None:
                 check_elided['context_level'] += 1
             else:
-                check_elided['node'] = new_ad_node
+                check_elided['node'] = current_ad_node
 
 
             if nested_ad:
@@ -835,7 +835,7 @@ class tcCanvas(MyCanvas):
 
     def draw_ad_tree(self,ad_tree=None,canvas=None,cluster=False):
         with hold_canvas(self):
-            ad_tree.y *= self.scale
+            ad_tree.y = 8 * self.scale
             for node in ad_tree.traverse_postorder():
                 if canvas and not ad_tree.is_nested:
                     if cluster:

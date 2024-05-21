@@ -739,7 +739,7 @@ class ADViewpy:
             for i in range(6):
                 rt_canvas_image.draw_image(self.rt_canvas[i],0,0)
 
-            rt_canvas_image.draw_image(self.rt_canvas[-1], 0, 0)
+            rt_canvas_image.draw_image(self.rt_canvas[-3], 0, 0)
 
 
         rt_canvas_image.flush()
@@ -748,7 +748,6 @@ class ADViewpy:
 
     def save_to_file(self,*args, **kwargs):
         # self.export_canvas.to_file("save_file.png")
-        self.output.append("in save_to_file")
         self.export_canvas.to_file(f"{self.image_name}.{self.image_type}")
 
     def print_tree_distribution(self):
@@ -951,8 +950,6 @@ class ADViewpy:
             self.rt_view_support = view_support
             return REDRAW
 
-        self.output.append(self.rt_exact_match_range)
-        self.output.append(exact_match_range)
         if exact_match_range != self.rt_exact_match_range:
             self.rt_exact_match_range = exact_match_range
             return FILTER_NODE
@@ -976,7 +973,6 @@ class ADViewpy:
 
     def select_subtree_from_tree(self,node_selected):
         if not hasattr(node_selected, 'selected') or node_selected.selected == False:
-            self.output.append("node is not selected")
             self.ad_parameter_alter = True
             # Ignore if 5 subtree had selected
             if len(self.subtree_list) >= 5:
@@ -1012,7 +1008,6 @@ class ADViewpy:
                     self.pairwise_canvas.draw_escape_taxa(align=LEFT)
 
             # return new_subtree
-
         else:
             self.rt_canvas.remove_subtree_block(node_selected.subtree)
             self.pairwise_canvas.remove_subtree_block(node_selected.subtree)
