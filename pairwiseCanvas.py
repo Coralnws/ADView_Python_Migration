@@ -68,6 +68,8 @@ class pairwiseCanvas(MyCanvas):
         self.left_missing_taxa_list = []
         self.right_missing_taxa_list = []
 
+        self.duplicate_subtree_list = []
+
         self.rt_section_list = []
         self.left_tree_section_list = []
         self.right_tree_section_list = []
@@ -768,9 +770,9 @@ class pairwiseCanvas(MyCanvas):
             if subtree.root.is_missing:
                 subtree_block = subtree.root.pairwise_block
 
-
-            self.draw_rec(subtree_block.topL.x, subtree_block.topL.y, subtree_block.width, subtree_block.height,subtree.color,
-                      layer_index=i)
+            self.draw_subtree_rec(subtree_block=subtree_block,subtree=subtree,layer_index=i)
+            # self.draw_rec(subtree_block.topL.x, subtree_block.topL.y, subtree_block.width, subtree_block.height,subtree.color,
+            #           layer_index=i)
 
             if subtree.root.is_missing == False:
                 self.write_block_label(subtree, i,align=align)
@@ -785,7 +787,17 @@ class pairwiseCanvas(MyCanvas):
                 self.tc_left_sorted_layer_list = tmp_sorted_layer_list
             else:
                 self.tc_right_sorted_layer_list = tmp_sorted_layer_list
-
+    def draw_subtree_rec(self,subtree_block,subtree,layer_index):
+        if hasattr(subtree.root,'duplicate_subtree') and subtree.root.duplicate_subtree:
+            subtree_list = subtree.root.subtree
+            segment_width = subtree_block.width / len(subtree_list)
+            for index, subtree in enumerate(subtree_list):
+                self.draw_rec(subtree_block.topL.x + segment_width * index, subtree_block.topL.y, segment_width, subtree_block.height,
+                              subtree.color, layer_index=layer_index)
+        else:
+            self.draw_rec(subtree_block.topL.x, subtree_block.topL.y, subtree_block.width, subtree_block.height,
+                          subtree.color,
+                          layer_index=layer_index)
     def remove_subtree_block(self,subtree):
         # Clear corresponding rt layer
         try:
@@ -797,21 +809,46 @@ class pairwiseCanvas(MyCanvas):
             if self.tc_tree:
                 if self.compare_between_tc:
                     if subtree.label in self.tc_left_sorted_layer_list:
-                        tc_clear_layer = self.tc_left_sorted_layer_list.index(subtree.label)
-                        self[tc_clear_layer + 14].clear()
+                        left_clear_layer = self.tc_left_sorted_layer_list.index(subtree.label)
+                        self[left_clear_layer + 14].clear()
 
                 if subtree.label in self.tc_right_sorted_layer_list:
-                    tc_clear_layer = self.tc_right_sorted_layer_list.index(subtree.label)
-                    self[tc_clear_layer + 7].clear()
+                    right_clear_layer = self.tc_right_sorted_layer_list.index(subtree.label)
+                    self[right_clear_layer + 7].clear()
 
             if self.compare_between_tc:
                 left_subtree = self.get_subtree(self.tc_left_subtree_list, subtree.label)
+                if hasattr(left_subtree.root,'duplicate_subtree') and left_subtree.root.duplicate_subtree:
+                    left_subtree.root.subtree.remove(left_subtree)
+                    if len(left_subtree.root.subtree) == 1:
+                        left_subtree.root.duplicate_subtree = False
+                        left_subtree.root.subtree = left_subtree.root.subtree[0]
+
+                        redraw_layer = self.tc_right_sorted_layer_list.index(left_subtree.root.subtree.label)
+                        redraw_layer += 14
+                        self[redraw_layer].clear()
+                        self.draw_subtree_rec(left_subtree.root.subtree.pairwise_block, left_subtree.root.subtree,
+                                              redraw_layer)
+
                 self.tc_left_subtree_list.remove(left_subtree)
                 self.remove_escape_taxa(subtree.label,self.left_escape_taxa_list)
 
             right_subtree = self.get_subtree(self.tc_right_subtree_list, subtree.label)
             if right_subtree :
+                if hasattr(right_subtree.root,'duplicate_subtree') and right_subtree.root.duplicate_subtree:
+                    right_subtree.root.subtree.remove(right_subtree)
+                    if len(right_subtree.root.subtree) == 1:
+                        right_subtree.root.duplicate_subtree = False
+                        right_subtree.root.subtree = right_subtree.root.subtree[0]
+
+                        redraw_layer = self.tc_right_sorted_layer_list.index(right_subtree.root.subtree.label)
+                        redraw_layer += 7
+                        self[redraw_layer].clear()
+                        self.draw_subtree_rec(right_subtree.root.subtree.pairwise_block,right_subtree.root.subtree,
+                                              redraw_layer)
+
                 self.tc_right_subtree_list.remove(right_subtree)
+
             self.remove_escape_taxa(subtree.label,self.right_escape_taxa_list)
 
             if self.compare_between_tc:
@@ -821,10 +858,11 @@ class pairwiseCanvas(MyCanvas):
 
         except Exception as err:
             self[-1].fill_text("Loading", self.width - 200, 20)
-
-
+            
     def setup_tc_subtree_list(self,tree,align):
         for index,subtree in enumerate(self.adPy.subtree_list):
+            subtree.root.duplicate_subtree = False
+            subtree.root.subtree = None
             self.draw_tc_subtree_block(subtree,align)
 
         self.draw_escape_taxa(align)
@@ -833,7 +871,6 @@ class pairwiseCanvas(MyCanvas):
             return True
         else:
             return False
-
 
     def draw_tc_subtree_block(self,subtree,align):
         if align == LEFT:
@@ -849,7 +886,6 @@ class pairwiseCanvas(MyCanvas):
         corresponding_subtree = subtree.root.corr[tree.id]
 
         # If taxa in corresponding subtree is all missing taxa in target tree
-
         new_subtree = Subtree(label=subtree.label, belong_tree=tree, root=corresponding_subtree,
                                    color=subtree.color)
         subtree_list.append(new_subtree)
@@ -861,7 +897,6 @@ class pairwiseCanvas(MyCanvas):
 
                 self.record_escape_taxa(tc_corr, new_subtree, align)
             return
-
 
         new_subtree.get_leaf_nodes()
         subtree.get_leaf_nodes()
@@ -896,7 +931,6 @@ class pairwiseCanvas(MyCanvas):
         self.check_duplicate_subtree(corresponding_subtree, subtree, new_subtree)
         for leaf_node in corresponding_subtree.leaf_nodes():
             leaf_node.selected = True
-
 
         self.draw_subtree_block(corresponding_subtree, select_tree=TC, new_subtree=new_subtree,
                                 subtree_from_rt=subtree,align=align)

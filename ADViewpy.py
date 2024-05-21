@@ -57,6 +57,8 @@ class ADViewpy:
         self.rt_exact_match_range = None
         self.rt_support_value_range = None
 
+        self.pairwise_tree = None
+
 
         # Paiwise canvas related
         self.pairwise_canvas = None
@@ -393,6 +395,12 @@ class ADViewpy:
 
         compare_between_tc = False
         if compare_tree:
+            if compare_tree == self.pairwise_tree:
+                display(self.pairwise_canvas)
+                return
+            else:
+                self.pairwise_tree = compare_tree
+
             if type(compare_tree) is list:
                 tmp_list = []
                 for tree in compare_tree:
@@ -442,6 +450,7 @@ class ADViewpy:
                 return
 
             compare_tree = self.ad_individual_canvas.tree_selected.tc_tree
+
 
         display(self.pairwise_canvas)
         self.pairwise_canvas.compare_tc_tree(compare_tree,compare_between_tc=compare_between_tc)
