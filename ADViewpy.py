@@ -74,19 +74,31 @@ class ADViewpy:
     def reference_tree(self,view_support=False,show=True,exact_match_range=None,support_value_range=None):
         # Calculate height of canvas
         height = get_leaf_node_amount(self.rt) * RT_Y_INTERVAL + RT_Y_INTERVAL
-        if exact_match_range:
-            self.rt_exact_match_range = exact_match_range
-        if support_value_range:
-            self.rt_support_value_range = support_value_range
+        if exact_match_range and not self.check_attribute_range(exact_match_range):
+            self.parameter_error("exact_match_range")
+            return
+
+        if support_value_range and not self.check_attribute_range(support_value_range):
+            self.parameter_error("support_value_range")
+            return
 
         if not self.rt_canvas and not self.pairwise_canvas:
             self.default_subtree_attribute()
             self.default_rt = None
             self.rt_view_support = view_support
+            self.rt_exact_match_range = exact_match_range
+            self.rt_support_value_range = support_value_range
             self.create_pairwise_rt_canvas(alter_type=BOTH)
 
-        if self.check_parameter_alter(view_support):
-            self.create_pairwise_rt_canvas(alter_type=RT)
+
+        else:
+            check_parameter = self.check_parameter_alter(view_support, exact_match_range, support_value_range)
+
+            if check_parameter == REDRAW:
+                self.create_pairwise_rt_canvas(alter_type=RT)
+
+            if check_parameter == FILTER_NODE:
+                self.rt_canvas.draw_filter_node(exact_match_range, support_value_range)
 
         if show:
             return self.rt_canvas
@@ -276,15 +288,16 @@ class ADViewpy:
                 canvas_height = (ad_row * DEFAULT_AD_HEIGHT * scale) + (2 * DEFAULT_PADDING_BETWEEN_AD) +  ((ad_row -
                                                                                                              1) * DEFAULT_PADDING_BETWEEN_AD)
                 if export:
-                    self.ad_individual_canvas_export = tcCanvas(layer = ad_row,adPy=self,view=view,
-                                                                  width=CANVAS_MAX_WIDTH,
-                                                                  height=canvas_height, scale=scale,max_ad=max_ad,
-                                                                  ad_per_row=ad_per_row, context_level=context_level,
-                                                                  first_ad=first_ad, last_ad=last_ad,tree_id=tree_id,
-                                                                  tree_name=tree_name, sort_by=sort,
-                                                                  escape_taxa_as_context_block=escape_taxa_as_context_block,
-                                                                  show_block_proportional=show_block_proportional,
-                                                                  subtree_independent=subtree_independent,show_tree_name=show_tree_name)
+                    self.ad_individual_canvas_export = tcCanvas(layer=ad_row, adPy=self, view=view,
+                                                                width=CANVAS_MAX_WIDTH, filter=filter,
+                                                                height=canvas_height, scale=scale, max_ad=max_ad,
+                                                                ad_per_row=ad_per_row, context_level=context_level,
+                                                                first_ad=first_ad, last_ad=last_ad, tree_id=tree_id,
+                                                                tree_name=tree_name, sort_by=sort,
+                                                                escape_taxa_as_context_block=escape_taxa_as_context_block,
+                                                                show_block_proportional=show_block_proportional,
+                                                                subtree_independent=subtree_independent,
+                                                                show_tree_name=show_tree_name)
 
                     self.ad_individual_canvas_export.TREE_NAME_LAYER = -3
                     for index, ad_tree in enumerate(self.ad_individual_canvas_export.ad_list):
@@ -293,15 +306,16 @@ class ADViewpy:
                         self.ad_individual_canvas_export[ad_tree.located_layer].flush()
 
                 else:
-                    self.ad_individual_canvas = tcCanvas(layer = ad_row,adPy=self,view=view,
-                                                                  width=CANVAS_MAX_WIDTH,
-                                                                  height=canvas_height, scale=scale,max_ad=max_ad,
-                                                                  ad_per_row=ad_per_row, context_level=context_level,
-                                                                  first_ad=first_ad, last_ad=last_ad,tree_id=tree_id,
-                                                                  tree_name=tree_name, sort_by=sort,
-                                                                  escape_taxa_as_context_block=escape_taxa_as_context_block,
-                                                                  show_block_proportional=show_block_proportional,
-                                                                  subtree_independent=subtree_independent,show_tree_name=show_tree_name)
+                    self.ad_individual_canvas = tcCanvas(layer=ad_row, adPy=self, view=view,
+                                                         width=CANVAS_MAX_WIDTH, filter=filter,
+                                                         height=canvas_height, scale=scale, max_ad=max_ad,
+                                                         ad_per_row=ad_per_row, context_level=context_level,
+                                                         first_ad=first_ad, last_ad=last_ad, tree_id=tree_id,
+                                                         tree_name=tree_name, sort_by=sort,
+                                                         escape_taxa_as_context_block=escape_taxa_as_context_block,
+                                                         show_block_proportional=show_block_proportional,
+                                                         subtree_independent=subtree_independent,
+                                                         show_tree_name=show_tree_name)
                     display(self.ad_individual_canvas)
                     for index, ad_tree in enumerate(self.ad_individual_canvas.ad_list):
                         with hold_canvas(self.ad_individual_canvas):
@@ -908,14 +922,16 @@ class ADViewpy:
         # Check paramater alter
         if alter_type == BOTH:
             # self.default_rt_value()
-            self.rt_canvas = rtCanvas(self, width=CANVAS_MAX_WIDTH, height=height ,
-                                               view_support=self.rt_view_support, default_rt=self.default_rt,
-                                      exact_match_interval=self.rt_exact_match_range,support_value_interval=self.rt_support_value_range)
+            self.rt_canvas = rtCanvas(self, width=CANVAS_MAX_WIDTH, height=height,
+                                      view_support=self.rt_view_support, default_rt=self.default_rt,
+                                      exact_match_range=self.rt_exact_match_range,
+                                      support_value_range=self.rt_support_value_range)
             self.pairwise_canvas = pairwiseCanvas(self, width=CANVAS_MAX_WIDTH, height=height)
         elif alter_type == RT:
             self.rt_canvas = rtCanvas(self, width=CANVAS_MAX_WIDTH, height=height,
-                                               view_support=self.view_support, default_rt=self.default_rt,
-                                      exact_match_interval=self.rt_exact_match_range,support_value_interval=self.rt_support_value_range)
+                                      view_support=self.rt_view_support, default_rt=self.default_rt,
+                                      exact_match_range=self.rt_exact_match_range,
+                                      support_value_range=self.rt_support_value_range)
         elif alter_type == PAIRWISE:
             self.pairwise_canvas = pairwiseCanvas(self, width=CANVAS_MAX_WIDTH, height=height)
 
@@ -925,6 +941,19 @@ class ADViewpy:
         if view_support != self.rt_view_support:
             self.rt_view_support = view_support
             return True
+
+    def check_attribute_range(self,interval_list):
+
+        if len(interval_list) != 2:
+            return False
+
+        if not isinstance(interval_list[0], int) or not isinstance(interval_list[1], int):
+            return False
+
+        if interval_list[0] > interval_list[1]:
+            return False
+
+        return True
 
     def select_subtree_from_tree(self,node_selected):
         if not hasattr(node_selected, 'selected') or node_selected.selected == False:

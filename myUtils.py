@@ -140,6 +140,8 @@ FULFILL = 'Fulfill'
 # Filter
 INCLUDE = 'include'
 EXCLUDE = 'exclude'
+REDRAW = 'Redraw'
+FILTER_NODE = 'Filter node'
 
 # Sort AD
 ID = 'id'

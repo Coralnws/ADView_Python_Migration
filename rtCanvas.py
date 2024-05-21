@@ -9,14 +9,15 @@ class rtCanvas(MyCanvas):
     # Initial x,y coordinates
     x = 30
     y = 30
-    SUBTREE_COMPARE_LAYER = -3
-    NODE_HOVER_LAYER = -2
-    RT_LAYER = -1
+    SUBTREE_COMPARE_LAYER = -4
+    NODE_HOVER_LAYER = -1
+    RT_LAYER = -3
+    FILTER_NODE_LAYER = -2
 
 
-    def __init__(self,adPy,width,height,view_support,support_value_interval=None,
-                 exact_match_interval=None,default_rt=None):
-        super().__init__( 9, width = width, height = height)
+    def __init__(self, adPy, width, height, view_support, support_value_range=None,
+                 exact_match_range=None, default_rt=None):
+        super().__init__( 10, width = width, height = height)
         # Layer 7 - reference tree
         # Layer 6 - hover block
         self.adPy = adPy
@@ -25,8 +26,8 @@ class rtCanvas(MyCanvas):
         self.view_support = view_support
         self.tree_width = 1
         self.dupletree = None
-        self.support_value_interval = support_value_interval
-        self.exact_match_interval = exact_match_interval
+        self.support_value_interval = support_value_range
+        self.exact_match_interval = exact_match_range
 
         self.layer_block_list = {}
         self.layer_occupied = [0, 0, 0, 0, 0]
@@ -63,13 +64,11 @@ class rtCanvas(MyCanvas):
 
         for i in range(section_cnt):
             self.section_list.append([])
+
             if self.inner_section:
                 for j in range(3):
                     self.section_list[i].append([])
-            # section_top_border = i * MIN_SECTION_HEIGHT
-            # new_dupletree = DupleTree(self,Point(0,section_top_border),Point(self.width/2,section_top_border +
-            #                                                                  MIN_SECTION_HEIGHT))
-            # self.section_list.append(new_dupletree)
+
 
     # Draw reference tree on rtcanvas
     def draw_rt(self,draw_canvas,node=None,level=0):
@@ -130,7 +129,7 @@ class rtCanvas(MyCanvas):
 
             # To determine the midpoint of vertical line connecting multiple children
             first_child = child_nodes[0] if child_nodes else None
-            last_child = child_nodes[self.RT_LAYER] if child_nodes else None
+            last_child = child_nodes[-1] if child_nodes else None
 
             if self.view_support:
                 x = self.x * level
@@ -186,45 +185,47 @@ class rtCanvas(MyCanvas):
             else:
                 node.parent_node.block = Block(node.block.topL,node.block.botR)
 
-        if not node.is_leaf() and level > 0 and node.exact_match == 68:
-            self.draw_rec(node.pos.x, node.pos.y - RT_X_INTERVAL,
-                          RT_X_INTERVAL,
-                          RT_X_INTERVAL - 2, BEIGE, layer_index=-1)
+        if not node.is_leaf() and self.check_attribute_in_range(node):
+            self.draw_rec(node.pos.x, node.pos.y - RT_X_INTERVAL,RT_X_INTERVAL-2,RT_X_INTERVAL - 2, BEIGE,
+                          layer_index=self.FILTER_NODE_LAYER)
 
 
         node.selected = False
         self.insert_node_section_list(node)
-        # self.dupletree.insert(node=node,point=node.mouse_range.topL)
-        # self.dupletree.insert(node=node, point=node.mouse_range.botR)
-        # self.dupletree.insert(node=node, point=Point(node.mouse_range.botR.x, node.mouse_range.topL.y))
-        # self.dupletree.insert(node=node, point= Point(node.mouse_range.topL.x, node.mouse_range.botR.y))
-        # self.quads.insert(quads.Point(block.topL.x, block.topL.y, data=node))
-        # self.quads.insert(quads.Point(block.topL.x, block.botR.y, data=node))
-        # self.quads.insert(quads.Point(block.botR.x, block.topL.y, data=node))
-        # self.quads.insert(quads.Point(block.botR.x, block.botR.y, data=node))
 
-        # Testing
-        # self.draw_dots(node.pos.x,node.pos.y - X_INTERVAL)
-        # self.draw_dots(node.pos.x + X_INTERVAL, node.pos.y)
-        # self.draw_dots(node.pos.x + X_INTER0L.y,8,node.range_botR.y - node.range_topL.y,BEIGE)
+    def draw_filter_node(self,exact_match_range,support_value_range):
+        self.support_value_interval = support_value_range
+        self.exact_match_interval = exact_match_range
 
-    # def check_in_attribute_range(self,node):
-    #     #     in_range =
-    #     #     if self.support_value_interval:
-    #     #         if node.support >= self.support_value_interval[0] and node.support <= self.support_value_interval[1]:
-    #     #             in_range = True
-    #     #         else:
-    #     #             in_range = False
-    #     #
-    #     #     if self.exact_match_interval:
-    #     #         if node.exact_match >= self.exact_match_interval[0] and node.exact_match <= self.exact_match_interval[1]:
-    #     #             if
+        self[self.FILTER_NODE_LAYER].clear()
+        for node in self.rt.postorder_node_iter():
+            if not node.is_leaf() and self.check_attribute_in_range(node):
+                self.draw_rec(node.pos.x, node.pos.y - RT_X_INTERVAL, RT_X_INTERVAL - 2, RT_X_INTERVAL - 2, BEIGE,
+                              layer_index=self.FILTER_NODE_LAYER)
 
+    def check_attribute_in_range(self,node):
+        exact_match_result = False
+        support_value_result = False
 
+        if self.support_value_interval:
+            if node.support >= self.support_value_interval[0] and node.support <= self.support_value_interval[1]:
+                support_value_result = True
+            else:
+                support_value_result = False
+        else:
+            support_value_result = True
 
+        if self.exact_match_interval:
+            exact_match_percentage = node.exact_match / len(self.adPy.tc) * 100
 
+            if exact_match_percentage >= self.exact_match_interval[0] and exact_match_percentage <= self.exact_match_interval[1]:
+                exact_match_result = True
+            else:
+                exact_match_result = False
+        else:
+            exact_match_result = True
 
-
+        return (exact_match_result and support_value_result)
 
     def insert_node_section_list(self,node):
         top_section_index = math.floor(node.mouse_range.topL.y / MIN_SECTION_HEIGHT)
@@ -398,9 +399,9 @@ class rtCanvas(MyCanvas):
     def draw_hover_block(self):
         if not self.node_hover.is_leaf() and self.view_support:
             self.draw_rec(self.node_hover.pos.x + RT_X_INTERVAL , self.node_hover.pos.y - RT_X_INTERVAL + 2 , RT_X_INTERVAL,
-                          RT_X_INTERVAL - 2, BLACK, layer_index=-2)
+                          RT_X_INTERVAL - 2, BLACK, layer_index=self.NODE_HOVER_LAYER)
         else:
-            self.draw_rec(self.node_hover.pos.x, self.node_hover.pos.y - RT_X_INTERVAL, RT_X_INTERVAL - 2, RT_X_INTERVAL - 2, BLACK, layer_index = -2)
+            self.draw_rec(self.node_hover.pos.x, self.node_hover.pos.y - RT_X_INTERVAL, RT_X_INTERVAL - 2, RT_X_INTERVAL - 2, BLACK, layer_index = self.NODE_HOVER_LAYER)
 
         self[self.NODE_HOVER_LAYER].flush()
 

@@ -16,7 +16,7 @@ class tcCanvas(MyCanvas):
     # layer -2 for tree name
     # layer -3 forward for ad
     def __init__(self,adPy,view,ad_per_row=DEFAULT_AD_PER_ROW,width=1100, height=1100,scale=1.0,max_ad=None,
-                 context_level=2,first_ad=None,last_ad=None,tree_id=None,tree_name=None,sort_by=ID,
+                 context_level=2,filter=INCLUDE,first_ad=None,last_ad=None,tree_id=None,tree_name=None,sort_by=ID,
                  escape_taxa_as_context_block=True,show_block_proportional=False,parameter_from_individual_ad=True,
                  subtree_independent=True,differentiate_inexact_match=True,layer=5,show_tree_name=False):
         super().__init__(layer = layer + 4, width = width, height = height)
@@ -36,6 +36,7 @@ class tcCanvas(MyCanvas):
         self.context_level = context_level
         self.scale_alter = False
         self.check_result_list = []
+        self.filter_type = filter
 
         self.cluster_agree_rt = None
 
@@ -115,7 +116,12 @@ class tcCanvas(MyCanvas):
             if self.view == AD_INDIVIDUAL:
                 if self.condition_exist and self.check_index_name_fulfill():
                     break
-                result = self.check_condition(index,tc_tree)
+
+                if self.filter_type == INCLUDE:
+                    result = self.check_include_condition(index, tc_tree)
+                else:
+                    result = self.check_exclude_condition(tc_tree)
+
                 if result == CONTINUE:
                     continue
                 elif result == BREAK:
@@ -135,7 +141,7 @@ class tcCanvas(MyCanvas):
         # Condition fulfill, break process
         return True
 
-    def check_condition(self,index,tc_tree):
+    def check_include_condition(self, index, tc_tree):
         if self.first_ad and index < self.first_ad - 1:
             return CONTINUE
         if self.last_ad and index >= self.last_ad:
@@ -162,6 +168,27 @@ class tcCanvas(MyCanvas):
             else:
                 check_tree_index_name = CONTINUE
 
+        return check_tree_index_name
+
+    def check_exclude_condition(self, tc_tree):
+        if self.first_ad and self.last_ad and tc_tree.id >= self.first_ad and tc_tree.id <= self.last_ad:
+            return CONTINUE
+
+        if self.max_ad and self.ad_drawn >= self.max_ad:
+            return BREAK
+
+        check_tree_index_name = TRUE
+        if self.target_tc_tree_index:
+            if tc_tree.id in self.target_tc_tree_index:
+                check_tree_index_name = CONTINUE
+            else:
+                return TRUE
+
+        if self.target_tc_tree_name:
+            if tc_tree.name in self.target_tc_tree_name:
+                check_tree_index_name = CONTINUE
+            else:
+                return TRUE
 
         return check_tree_index_name
 
